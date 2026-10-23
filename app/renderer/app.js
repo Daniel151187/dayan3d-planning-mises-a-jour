@@ -50,7 +50,7 @@
     started: false,
     me: null,
     profiles: [], machines: [], orders: [], prints: [], tasks: [], availability: [], attachments: [], history: [],
-    materials: [], material_uses: [], stock_moves: [], comments: [], comment_reads: [], machine_blocks: [], clients: [], print_templates: [], maintenance_rules: [], trash: [], spools: [], volunteer_hours: [], printer_status: [], volRange: 'month', filTab: 'spools', filFilter: 'all', filType: '', filQuery: '', helpQuery: '', helpOpen: '', statsRange: 30, orderFilter: { urgent: false, tag: '' }, openOrderId: null,
+    materials: [], material_uses: [], stock_moves: [], comments: [], comment_reads: [], machine_blocks: [], clients: [], print_templates: [], maintenance_rules: [], trash: [], spools: [], volunteer_hours: [], printer_status: [], app_settings: [], volRange: 'month', filTab: 'spools', filFilter: 'all', filType: '', filQuery: '', helpQuery: '', helpOpen: '', statsRange: 30, orderFilter: { urgent: false, tag: '' }, openOrderId: null,
     view: 'today',
     calMode: 'month',
     cursor: startOfDay(new Date()),
@@ -61,7 +61,7 @@
     modalRefresh: null
   };
 
-  const TABLES = ['profiles', 'machines', 'orders', 'prints', 'tasks', 'availability', 'attachments', 'history', 'materials', 'material_uses', 'stock_moves', 'comments', 'comment_reads', 'machine_blocks', 'clients', 'print_templates', 'maintenance_rules', 'trash', 'spools', 'volunteer_hours', 'printer_status'];
+  const TABLES = ['profiles', 'machines', 'orders', 'prints', 'tasks', 'availability', 'attachments', 'history', 'materials', 'material_uses', 'stock_moves', 'comments', 'comment_reads', 'machine_blocks', 'clients', 'print_templates', 'maintenance_rules', 'trash', 'spools', 'volunteer_hours', 'printer_status', 'app_settings'];
 
   const profileName = (id) => state.profiles.find((p) => p.id === id)?.name || 'Quelqu’un';
   const machineName = (id) => state.machines.find((m) => m.id === id)?.name || 'Sans machine';
@@ -264,6 +264,45 @@
     return ms > 0 ? `${h} h${m ? ` ${pad(m)}` : ''}` : '';
   }
 
+  /* ---------- Rentabilité : matière + temps machine + main-d'œuvre ---------- */
+  const settingNum = (k, d) => { const r = state.app_settings.find((x) => x.key === k); const n = r ? Number(r.value) : NaN; return Number.isFinite(n) ? n : d; };
+  const tariffs = () => ({
+    labor: Math.max(0, settingNum('labor_rate', 0)),
+    margin: Math.min(90, Math.max(0, settingNum('target_margin', 40))),
+    round: settingNum('round_to', 1) > 0 ? settingNum('round_to', 1) : 1
+  });
+  const roundUp = (x, step) => Math.round(Math.ceil(x / step - 1e-9) * step * 100) / 100;
+  // temps de machine d'une commande (toutes ses impressions) au tarif horaire de chaque machine
+  function machineCost(orderId) {
+    const missing = new Set();
+    let cost = 0;
+    let hours = 0;
+    let estimated = false;
+    state.prints.filter((p) => p.order_id === orderId).forEach((p) => {
+      const h = Math.max(0, (new Date(p.end_at) - new Date(p.start_at)) / 36e5);
+      hours += h;
+      if (p.status === 'planned' || p.status === 'printing') estimated = true;
+      const m = state.machines.find((x) => x.id === p.machine_id);
+      if (m && m.hourly_rate != null) cost += h * Number(m.hourly_rate); else if (m) missing.add(m.name);
+    });
+    return { cost, hours, estimated, missing: [...missing] };
+  }
+  // le vrai coût d'une commande, sa marge et le prix qui donnerait la marge souhaitée
+  function orderProfit(orderId, extraRows, priceVal, laborH) {
+    const mat = orderCost(orderId, extraRows);
+    const mc = machineCost(orderId);
+    const t = tariffs();
+    const lh = Number(laborH) > 0 ? Number(laborH) : 0;
+    const laborCost = lh * t.labor;
+    const cost = mat.total + mc.cost + laborCost;
+    const price = priceVal == null || priceVal === '' || Number.isNaN(Number(priceVal)) ? null : Number(priceVal);
+    const margin = price == null ? null : price - cost;
+    const pct = price != null && price > 0 ? (margin / price) * 100 : null;
+    const suggested = cost > 0 ? roundUp(cost / (1 - t.margin / 100), t.round) : null;
+    return { mat, mc, laborH: lh, laborCost, cost, price, margin, pct, suggested, target: t.margin, laborRateMissing: lh > 0 && t.labor === 0 };
+  }
+  const marginClass = (pct, target) => (pct < 0 ? 'bad' : pct < target ? 'warn' : 'good');
+
   async function loadTable(t) {
     let q = sb.from(t).select('*');
     if (t === 'history') q = q.order('at', { ascending: false }).limit(200);
@@ -459,6 +498,7 @@
       html = `<h2>Machines</h2>${navBtns}<span class="hint">${fmtShort(a)} – ${fmtShort(b)} ${b.getFullYear()}</span>
         <span class="grow hint">Double-clic sur une machine pour planifier une impression</span>
         <button class="btn" type="button" data-act="plan">Planifier</button>
+        <button class="btn" type="button" data-act="tariffs">Tarifs</button>
         <button class="btn" type="button" data-act="newitem" data-kind="maintenance">+ Entretien</button>
         <button class="btn" type="button" data-act="newitem" data-kind="template">+ Modèle</button>
         <button class="btn" type="button" data-act="newitem" data-kind="block">+ Blocage</button>
@@ -489,7 +529,8 @@
       html = `<h2>Statistiques</h2>
         <div class="seg" role="group" aria-label="Période">
           ${[[30, '30 jours'], [90, '3 mois'], [365, '12 mois']].map(([d, l]) => `<button type="button" data-act="srange" data-r="${d}" aria-pressed="${state.statsRange === d}">${l}</button>`).join('')}
-        </div><span class="grow hint">Sur les commandes terminées et les impressions réalisées</span>`;
+        </div><span class="grow hint">Sur les commandes terminées et les impressions réalisées</span>
+        <button class="btn" type="button" data-act="tariffs">Tarifs</button>`;
     } else if (v === 'clients') {
       const orphans = orphanOrders().length;
       html = `<h2>Clients</h2><span class="grow hint">${state.clients.length} fiche${state.clients.length > 1 ? 's' : ''}</span>
@@ -807,6 +848,8 @@
           o.due_date ? `<span class="${late ? 'late' : ''}">Échéance ${esc(fmtShort(parseYmd(o.due_date)))}${late ? ' (en retard)' : ''}</span>` : '',
           o.price_chf != null ? `<span>${esc(fmtMoney(o.price_chf))}</span>` : '',
           cost.total > 0 ? `<span title="Coût de la matière utilisée">Matière ${esc(fmtMoney(cost.total))}</span>` : '',
+          (() => { const pf = Number(o.price_chf) > 0 ? orderProfit(o.id, null, o.price_chf, o.labor_h) : null; return pf && pf.cost > 0 && pf.pct != null ? `<span class="mg ${marginClass(pf.pct, pf.target)}" title="Marge après matière, temps de machine et main-d’œuvre">Marge ${esc(fmtNum(Math.round(pf.pct)))} %</span>` : ''; })(),
+          o.billing_invoice_number ? `<span title="Brouillon de facture créé dans la facturation">Facture ${esc(o.billing_invoice_number)}</span>` : '',
           prints ? `<span>${prints} impression${prints > 1 ? 's' : ''}</span>` : '',
           files ? `<span>${files} fichier${files > 1 ? 's' : ''}</span>` : '',
           photos ? `<span>${photos} photo${photos > 1 ? 's' : ''}</span>` : '',
@@ -870,6 +913,20 @@
         '- Si tes commandes ont déjà des noms de clients, le bouton **Créer les fiches depuis les commandes** crée les fiches et relie tout en une fois.',
         '- **Envoyer vers la facturation** : envoie tes clients (nom, e-mail, téléphone, adresse, NPA, localité) directement dans la base de l’application de facturation. Connecte-toi une fois avec ton compte de la facturation ; l’appli te montre ce qui sera créé, puis tu confirmes. Les clients déjà présents ne sont jamais dupliqués ni écrasés (leurs infos manquantes peuvent être complétées).',
         '- Autres méthodes dans la même fenêtre : script SQL à coller dans Supabase de la facturation, ou fichier CSV.'] },
+    { id: 'profit', g: 1, t: 'Rentabilité et prix conseillé', k: 'marge cout tarif horaire machine main oeuvre prix conseille devis rentable',
+      b: ['Chaque commande affiche son **vrai coût** : la matière utilisée, le temps de machine au tarif horaire de chaque machine, et la main-d’œuvre (le temps de préparation et de finition que tu indiques dans la commande).',
+        '- Bouton **Tarifs** (pages Machines et Statistiques) : le coût d’une heure de chaque machine, le tarif horaire de la main-d’œuvre, la marge souhaitée et l’arrondi du prix. Les tarifs sont partagés avec l’équipe.',
+        '- Dans une commande : coût total, marge en francs et en pourcentage du prix de vente, et **prix conseillé** pour atteindre ta marge souhaitée. « Utiliser ce prix » le recopie dans le champ Prix.',
+        '- Sur les cartes du tableau, la pastille **Marge** passe au vert (marge atteinte), à l’orange (en dessous de la marge souhaitée) ou au rouge (commande à perte).',
+        '- **Statistiques** : la marge totale de la période et les 5 commandes les moins rentables.',
+        'La marge se calcule sur le prix de vente (une commande à 100 francs avec 40 francs de marge = 40 %). Le temps de machine d’une impression planifiée est une estimation tant qu’elle n’est pas terminée.'] },
+    { id: 'invoice', g: 1, t: 'Créer un brouillon de facture dans la facturation', k: 'facture facturation brouillon commande envoyer client',
+      b: ['Dans une commande enregistrée, section **Facturation** : « Créer un brouillon de facture… ».',
+        '- La première fois, connecte-toi avec ton compte de l’appli de facturation (le mot de passe n’est pas enregistré).',
+        '- L’appli retrouve le client dans la facturation (par e-mail ou par nom) ou l’ajoute depuis sa fiche.',
+        '- Tu vois les lignes de la facture (objet de la commande et prix par défaut) et tu peux les modifier, en ajouter (frais de port…) ou ajouter une note.',
+        '- **Créer le brouillon** : la facture est créée dans la facturation, sans être finalisée ni envoyée. Tu la vérifies là-bas, tu choisis le mode de paiement, puis tu la finalises.',
+        '- Le numéro de facture s’affiche dans la commande et sur sa carte. Si une facture existe déjà, l’appli te prévient avant d’en créer une autre.'] },
     { id: 'comments', g: 1, t: 'Commentaires, photos et fichiers d’une commande', k: 'message equipe avant apres stl pastille nouveau',
       b: ['- **Commentaires** : écris un message à l’équipe en bas de la commande (Ctrl + Entrée pour envoyer). Une pastille rouge signale les nouveaux, et chacun a sa propre lecture.',
         '- **Photos avant / après** : « Ajouter » dans la zone Avant ou Après. Un clic sur une miniature l’agrandit. Les photos sont réduites automatiquement pour ne pas remplir le stockage.',
@@ -1329,6 +1386,13 @@
     const doneOrders = state.orders.filter((o) => o.status === 'done' && doneAt(o) >= start && doneAt(o) <= now);
     const revenue = doneOrders.reduce((s, o) => s + price(o), 0);
     const matCost = doneOrders.reduce((s, o) => s + orderCost(o.id).total, 0);
+    const profits = doneOrders.filter((o) => price(o) > 0).map((o) => ({ o, pf: orderProfit(o.id, null, o.price_chf, o.labor_h) }));
+    const profRevenue = profits.reduce((s, x) => s + price(x.o), 0);
+    const profCost = profits.reduce((s, x) => s + x.pf.cost, 0);
+    const profMargin = profRevenue - profCost;
+    const profPct = profRevenue > 0 ? (profMargin / profRevenue) * 100 : null;
+    const missingRates = profits.filter((x) => x.pf.mc.missing.length).length;
+    const lowest = profits.filter((x) => x.pf.cost > 0 && x.pf.pct != null).sort((x, y) => x.pf.pct - y.pf.pct).slice(0, 5);
     const delays = doneOrders.map((o) => (doneAt(o) - new Date(o.created_at)) / 864e5).filter((d) => d >= 0);
     const avgDelay = delays.length ? delays.reduce((x, y) => x + y, 0) / delays.length : null;
     const withDue = doneOrders.filter((o) => o.due_date);
@@ -1357,6 +1421,7 @@
       ${kpi('Commandes terminées', String(doneOrders.length), doneOrders.length ? '' : 'Aucune sur la période')}
       ${kpi('Chiffre d’affaires', esc(fmtMoney(revenue)), doneOrders.length ? `${doneOrders.filter((o) => o.price_chf != null).length} commande(s) avec un prix` : '')}
       ${kpi('Coût matière', esc(fmtMoney(matCost)), `Reste ${esc(fmtMoney(revenue - matCost))} après la matière`)}
+      ${kpi('Marge', profits.length ? esc(fmtMoney(profMargin)) : '–', profits.length ? `${profPct == null ? '' : `${esc(fmtNum(Math.round(profPct)))} % du chiffre d’affaires, `}après matière, machines et main-d’œuvre${missingRates ? `. Tarif de machine manquant sur ${missingRates} commande${missingRates > 1 ? 's' : ''}` : ''}` : 'Aucune commande terminée avec un prix')}
       ${kpi('Heures d’impression', esc(fmtH(totalH)), `${Math.round(avgOcc)} % d’occupation moyenne`)}
       ${kpi('Délai moyen', avgDelay == null ? '–' : `${esc(fmtNum(Math.round(avgDelay * 10) / 10))} jours`, 'De la création à la fin de la commande')}
       ${kpi('Taux de réussite', successRate == null ? '–' : `${successRate} %`, finished.length ? `${finished.length - failedP.length} impressions réussies sur ${finished.length}` : 'Aucune impression terminée')}
@@ -1417,6 +1482,8 @@
           ${failedP.length ? `<div class="tl-item static"><span class="ti-main">Matière perdue</span><span class="sub">${esc(fmtNum(Math.round(lostGrams)))} g${lostCost > 0 ? `, environ ${esc(fmtMoney(lostCost))}` : ''}</span></div>${topReasons.map(([k, n]) => `<div class="tl-item static"><span class="ti-main">${esc(k)}</span><span class="sub">${n} fois</span></div>`).join('')}` : '<div class="empty-day">Aucun échec sur la période</div>'}</section>
         <section class="panel"><header><h3>Meilleurs clients</h3><span class="count">${topClients.length}</span></header>
           ${list(topClients.map((c) => `<div class="tl-item static"><span class="ti-main">${esc(c.name)}</span><span class="sub">${c.n} commande${c.n > 1 ? 's' : ''}${c.total > 0 ? `, ${esc(fmtMoney(c.total))}` : ''}</span></div>`), 'Aucune commande terminée sur la période')}</section>
+        <section class="panel"><header><h3>Commandes les moins rentables</h3><span class="count">${lowest.length}</span></header>
+          ${list(lowest.map((x) => `<button type="button" class="tl-item" data-act="edit" data-kind="order" data-id="${x.o.id}"><span class="ti-main">${esc(x.o.client || x.o.title)}${x.o.client ? ` : ${esc(x.o.title)}` : ''}</span><span class="sub mg ${marginClass(x.pf.pct, x.pf.target)}">Marge ${esc(fmtNum(Math.round(x.pf.pct)))} %, ${esc(fmtMoney(x.pf.margin))} sur ${esc(fmtMoney(x.pf.price))}</span></button>`), 'Aucune commande terminée avec un prix et un coût sur la période')}</section>
         <section class="panel"><header><h3>Matières les plus utilisées</h3><span class="count">${topMats.length}</span></header>
           ${list(topMats.map((x) => `<div class="tl-item static"><span class="ti-main">${esc(x.m.name)}</span><span class="sub">${esc(fmtNum(x.qty))} ${esc(unitFor(x.m, x.qty))}${x.cost > 0 ? `, ${esc(fmtMoney(x.cost))}` : ''}</span></div>`), 'Aucune matière consommée sur la période')}</section>
       </div>`;
@@ -1768,6 +1835,266 @@
     const { data } = await bc.auth.getSession();
     if (data && data.session) { st.email = data.session.user.email || st.email; await loadExisting(); }
     else { st.phase = 'login'; paint(); }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Tarifs de l'atelier (rentabilité)                                  */
+  /* ------------------------------------------------------------------ */
+  function openTariffs() {
+    const t = tariffs();
+    const ROUNDS = [[0.05, '5 centimes'], [0.1, '10 centimes'], [0.5, '50 centimes'], [1, '1 franc'], [5, '5 francs']];
+    $('#layer-root').innerHTML = `
+      <div class="overlay layer" id="t-overlay">
+        <div class="modal tariffs" role="dialog" aria-modal="true" aria-label="Tarifs de l’atelier">
+          <div class="modal-head"><h3>Tarifs de l’atelier</h3><button type="button" class="btn btn-quiet icon-btn" data-tclose aria-label="Fermer">✕</button></div>
+          <div class="modal-body">
+            <p class="bx-intro">Ces tarifs servent à calculer le vrai coût de chaque commande (matière, temps de machine, main-d’œuvre) et le prix conseillé. Ils sont partagés avec toute l’équipe.</p>
+            <h4>Coût d’une heure de machine (CHF)</h4>
+            <small class="hint-line">Électricité, usure, amortissement. Pour une imprimante de bureau, on compte souvent 1 à 3 CHF de l’heure : à adapter à ta situation.</small>
+            ${state.machines.map((m) => `<label class="field t-row"><span>${esc(m.name)}</span><input type="number" step="0.05" min="0" inputmode="decimal" data-machine="${m.id}" value="${m.hourly_rate != null ? esc(m.hourly_rate) : ''}" placeholder="ex. 2.00"></label>`).join('')}
+            <h4>Main-d’œuvre</h4>
+            <label class="field t-row"><span>Tarif horaire (CHF par heure)</span><input id="t-labor" type="number" step="0.5" min="0" inputmode="decimal" value="${t.labor || ''}" placeholder="ex. 40"></label>
+            <h4>Prix conseillé</h4>
+            <label class="field t-row"><span>Marge souhaitée (% du prix de vente)</span><input id="t-margin" type="number" step="1" min="0" max="90" inputmode="decimal" value="${esc(t.margin)}"></label>
+            <label class="field t-row"><span>Arrondir le prix à</span><select id="t-round">${ROUNDS.map(([v, l]) => `<option value="${v}" ${t.round === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+            <div class="bx-plan" id="t-example"></div>
+            <p class="form-error" id="t-error" role="alert"></p>
+          </div>
+          <div class="modal-foot"><span class="grow"></span><button type="button" class="btn" data-tclose>Annuler</button><button type="button" class="btn btn-primary" id="t-save">Enregistrer les tarifs</button></div>
+        </div>
+      </div>`;
+    const close = () => { $('#layer-root').innerHTML = ''; };
+    const val = (id) => $(id).value;
+    const example = () => {
+      const m = Number(val('#t-margin'));
+      const step = Number(val('#t-round'));
+      if (!(m >= 0 && m < 100)) { $('#t-example').textContent = ''; return; }
+      const cost = 30;
+      $('#t-example').innerHTML = `Exemple : une commande qui te coûte <b>${esc(fmtMoney(cost))}</b> avec <b>${esc(fmtNum(m))} %</b> de marge se vend <b>${esc(fmtMoney(roundUp(cost / (1 - m / 100), step)))}</b>. La marge se calcule sur le prix de vente : elle ne peut pas atteindre 100 %.`;
+    };
+    $('#t-overlay').addEventListener('input', example);
+    $('#t-overlay').addEventListener('change', example);
+    example();
+    $('#t-overlay').querySelectorAll('[data-tclose]').forEach((b) => b.addEventListener('click', close));
+    $('#t-overlay').addEventListener('mousedown', (e) => { if (e.target.id === 't-overlay') close(); });
+    $('#t-save').addEventListener('click', async () => {
+      const err = $('#t-error');
+      err.textContent = '';
+      const rates = [...document.querySelectorAll('#t-overlay [data-machine]')].map((el) => ({ id: el.dataset.machine, v: el.value.trim() === '' ? null : Number(el.value) }));
+      const labor = val('#t-labor').trim() === '' ? 0 : Number(val('#t-labor'));
+      const margin = Number(val('#t-margin'));
+      const step = Number(val('#t-round'));
+      if (rates.some((r) => r.v != null && !(r.v >= 0)) || !(labor >= 0)) { err.textContent = 'Les tarifs doivent être des nombres positifs ou nuls.'; return; }
+      if (!(margin >= 0 && margin <= 90)) { err.textContent = 'La marge souhaitée doit être comprise entre 0 et 90 %.'; return; }
+      $('#t-save').disabled = true;
+      for (const r of rates) {
+        const m = state.machines.find((x) => x.id === r.id);
+        if (m && (m.hourly_rate == null ? null : Number(m.hourly_rate)) === r.v) continue;
+        const { error } = await sb.from('machines').update({ hourly_rate: r.v }).eq('id', r.id);
+        if (error) { err.textContent = `Enregistrement impossible : ${error.message}`; $('#t-save').disabled = false; return; }
+      }
+      for (const [key, value] of [['labor_rate', labor], ['target_margin', margin], ['round_to', step]]) {
+        const { error } = await sb.from('app_settings').upsert({ key, value }, { onConflict: 'key' });
+        if (error) { err.textContent = `Enregistrement impossible : ${error.message}`; $('#t-save').disabled = false; return; }
+      }
+      await Promise.all([loadTable('machines'), loadTable('app_settings')]);
+      close();
+      render();
+      toast('Tarifs enregistrés');
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Commande vers facture : brouillon dans la base de la facturation   */
+  /* ------------------------------------------------------------------ */
+  const INVOICE_STATUS_FR = { brouillon: 'brouillon', envoyee: 'envoyée', payee: 'payée', annulee: 'annulée' };
+  const findBillingClient = (row, existing) => {
+    const em = row.email ? String(row.email).toLowerCase() : null;
+    return (em && existing.find((e) => e.email && String(e.email).trim().toLowerCase() === em)) || existing.find((e) => norm(e.name) === norm(row.name)) || null;
+  };
+  // délai de paiement : celui des réglages de la facturation si on le trouve, sinon 30 jours (modifiable là-bas)
+  const billingDueDays = (co) => {
+    if (co) {
+      for (const k of Object.keys(co)) {
+        if (/(pay|due|echeance).*(day|jour|term|delai)|(day|jour|delai).*(pay|due|echeance)/i.test(k) && Number.isInteger(Number(co[k])) && Number(co[k]) > 0 && Number(co[k]) <= 365) return Number(co[k]);
+      }
+    }
+    return 30;
+  };
+
+  async function openInvoiceDraft(orderId) {
+    const o = state.orders.find((x) => x.id === orderId);
+    if (!o) return;
+    const bc = billingClient();
+    const crec = o.client_id ? clientById(o.client_id) : null;
+    const target = crec ? (billingExport([crec]).rows[0] || null)
+      : (o.client && o.client.trim() ? { name: o.client.trim(), contact: null, address: null, postal_code: null, city: null, country: 'Suisse', email: null, phone: null, notes: null } : null);
+    let savedEmail = '';
+    try { savedEmail = localStorage.getItem('dayan_billing_email') || ''; } catch (e) { /* ignoré */ }
+    const st = {
+      phase: 'init', email: savedEmail, existing: [], company: null, linked: null, match: null,
+      lines: [{ type: 'Objet 3D', description: o.title || '', qty: '1', price: o.price_chf != null ? String(o.price_chf) : '' }],
+      note: '', again: false, err: '', done: null
+    };
+    $('#layer-root').innerHTML = `
+      <div class="overlay layer" id="iv-overlay">
+        <div class="modal export invoice-draft" role="dialog" aria-modal="true" aria-label="Créer un brouillon de facture">
+          <div class="modal-head"><h3>Créer un brouillon de facture</h3><button type="button" class="btn btn-quiet icon-btn" data-ivclose aria-label="Fermer">✕</button></div>
+          <div class="modal-body" id="iv-body"></div>
+          <div class="modal-foot" id="iv-foot"></div>
+        </div>
+      </div>`;
+    const close = () => { $('#layer-root').innerHTML = ''; };
+    const lineTotal = (l) => Math.round((Number(l.qty) || 0) * (Number(l.price) || 0) * 100) / 100;
+    const total = () => st.lines.filter((l) => l.description.trim()).reduce((s, l) => s + lineTotal(l), 0);
+    const closeBtn = '<button type="button" class="btn" data-ivclose>Fermer</button>';
+
+    const paint = () => {
+      const body = $('#iv-body');
+      const foot = $('#iv-foot');
+      const head = `<div class="iv-order"><b>${esc(o.client || o.title)}</b>${o.client ? `<span>${esc(o.title)}</span>` : ''}</div>`;
+      if (!bc) { body.innerHTML = `${head}<div class="bx-note">L’envoi vers la facturation n’est pas configuré dans cette version.</div>`; foot.innerHTML = `<span class="grow"></span>${closeBtn}`; return; }
+      if (!target) { body.innerHTML = `${head}<div class="bx-note">Cette commande n’a pas de client. Renseigne le nom du client (ou choisis une fiche client) dans la commande, enregistre, puis réessaie.</div>`; foot.innerHTML = `<span class="grow"></span>${closeBtn}`; return; }
+      if (st.phase === 'init' || st.phase === 'loading') { body.innerHTML = `${head}<div class="bx-note">${st.phase === 'init' ? 'Connexion à la facturation…' : 'Lecture des clients de la facturation…'}</div>`; foot.innerHTML = `<span class="grow"></span>${closeBtn}`; return; }
+      const errLine = st.err ? `<div class="form-error" role="alert">${esc(st.err)}</div>` : '';
+      if (st.phase === 'login') {
+        body.innerHTML = `${head}<div class="bx-login"><p>Connecte-toi une fois avec ton compte de l’<b>application de facturation</b> (même e-mail, même mot de passe). Le mot de passe n’est pas enregistré.</p>
+          <label class="field"><span>E-mail de la facturation</span><input id="iv-mail" type="email" autocomplete="username" value="${esc(st.email)}"></label>
+          <label class="field"><span>Mot de passe</span><input id="iv-pass" type="password" autocomplete="current-password"></label>${errLine}</div>`;
+        foot.innerHTML = `<span class="grow"></span>${closeBtn}<button type="button" class="btn btn-primary" id="iv-login">Se connecter</button>`;
+        return;
+      }
+      if (st.phase === 'done') {
+        const d = st.done;
+        body.innerHTML = `${head}<div class="bx-ok" role="status">Brouillon <b>${esc(d.number)}</b> créé dans la facturation (${esc(fmtMoney(d.total))})${d.createdClient ? ', et le client a été ajouté' : ''}.</div>
+          <p class="bx-intro">Ouvre l’application de facturation, page « Factures » : vérifie le brouillon, choisis le mode de paiement, puis finalise-le là-bas. Rien n’est envoyé au client.</p>
+          ${d.linkOk ? '' : '<div class="form-error" role="alert">Le brouillon est créé, mais le lien n’a pas pu être enregistré sur la commande : note bien son numéro.</div>'}`;
+        foot.innerHTML = `<span class="grow"></span><button type="button" class="btn btn-primary" data-ivclose>Terminé</button>`;
+        return;
+      }
+      const clientInfo = st.match
+        ? `Client trouvé dans la facturation : <b>${esc(st.match.name)}</b>.`
+        : `Ce client n’existe pas encore dans la facturation : <b>${esc(target.name)}</b> sera ajouté${target.email || target.phone ? ' avec son e-mail, son téléphone et son adresse' : ''}.`;
+      const linkedBanner = o.billing_invoice_id
+        ? `<div class="bx-plan"><div>Une facture a déjà été créée pour cette commande : <b>${esc(o.billing_invoice_number || '')}</b>${st.linked ? ` (${esc(INVOICE_STATUS_FR[st.linked.status] || st.linked.status)})` : ''}.</div>
+            <label class="checkline"><input type="checkbox" id="iv-again" ${st.again ? 'checked' : ''}><span>Créer quand même une nouvelle facture</span></label></div>` : '';
+      body.innerHTML = `${head}${linkedBanner}
+        <div class="bx-who">Connecté à la facturation : <b>${esc(st.email)}</b> <button type="button" class="linkbtn" id="iv-logout">Se déconnecter</button></div>
+        <div class="iv-client">${clientInfo}</div>
+        <table class="iv-lines"><thead><tr><th>Description</th><th>Quantité</th><th>Prix unitaire (CHF)</th><th>Total</th><th></th></tr></thead><tbody>
+          ${st.lines.map((l, i) => `<tr data-i="${i}"><td><input data-k="description" value="${esc(l.description)}" aria-label="Description"></td>
+            <td><input data-k="qty" type="number" step="any" min="0" value="${esc(l.qty)}" aria-label="Quantité"></td>
+            <td><input data-k="price" type="number" step="0.05" value="${esc(l.price)}" aria-label="Prix unitaire"></td>
+            <td class="iv-lt">${esc(fmtMoney(lineTotal(l)))}</td><td>${st.lines.length > 1 ? `<button type="button" class="btn btn-quiet icon-btn" data-ivdel="${i}" aria-label="Supprimer la ligne">✕</button>` : ''}</td></tr>`).join('')}
+        </tbody></table>
+        <div class="iv-bar"><button type="button" class="btn btn-small" id="iv-add">+ Ajouter une ligne</button><span class="grow"></span><span class="iv-total">Total : <b id="iv-total">${esc(fmtMoney(total()))}</b></span></div>
+        <label class="field"><span>Note sur la facture (facultatif, visible par le client)</span><textarea id="iv-note" rows="2">${esc(st.note)}</textarea></label>
+        <small class="hint-line">Le brouillon est créé sans être finalisé. Le mode de paiement (carte ou QR-facture) et la date d’échéance se vérifient dans la facturation avant de finaliser.</small>${errLine}`;
+      const needAgain = o.billing_invoice_id && !st.again;
+      foot.innerHTML = `<span class="grow"></span>${closeBtn}<button type="button" class="btn btn-primary" id="iv-create" ${st.phase === 'sending' || needAgain ? 'disabled' : ''}>${st.phase === 'sending' ? 'Création…' : 'Créer le brouillon'}</button>`;
+    };
+
+    const loadBilling = async () => {
+      st.phase = 'loading'; paint();
+      try {
+        st.existing = await billingExisting(bc);
+        st.match = target ? findBillingClient(target, st.existing) : null;
+        const co = await bc.from('company_settings').select('*').eq('id', 1);
+        st.company = !co.error && co.data && co.data[0] ? co.data[0] : null;
+        if (o.billing_invoice_id) {
+          const li = await bc.from('invoices').select('id,number,status,total').eq('id', o.billing_invoice_id);
+          st.linked = !li.error && li.data && li.data[0] ? li.data[0] : null;
+        }
+        st.phase = 'ready'; st.err = '';
+      } catch (e) {
+        const be = billingError(e);
+        st.err = be.text;
+        st.phase = be.relogin ? 'login' : 'ready';
+      }
+      paint();
+    };
+    const doLogin = async () => {
+      const email = ($('#iv-mail').value || '').trim();
+      const password = $('#iv-pass').value || '';
+      if (!email || !password) { st.err = 'Saisis l’e-mail et le mot de passe de la facturation.'; st.email = email; paint(); return; }
+      st.email = email;
+      $('#iv-login').disabled = true;
+      const { data, error } = await bc.auth.signInWithPassword({ email, password });
+      if (error || !data || !data.session) { st.err = billingError(error || 'Invalid login credentials').text; paint(); return; }
+      try { localStorage.setItem('dayan_billing_email', email); } catch (e) { /* ignoré */ }
+      st.email = data.session.user.email || email;
+      st.err = '';
+      await loadBilling();
+    };
+    const doCreate = async () => {
+      const lines = st.lines.filter((l) => l.description.trim());
+      if (!lines.length) { st.err = 'Ajoute au moins une ligne avec une description.'; paint(); return; }
+      if (lines.some((l) => !(Number(l.qty) > 0) || l.price === '' || Number.isNaN(Number(l.price)))) { st.err = 'Chaque ligne doit avoir une quantité supérieure à zéro et un prix.'; paint(); return; }
+      st.phase = 'sending'; st.err = ''; paint();
+      let createdClient = false;
+      let invoice = null;
+      try {
+        let clientId = st.match && st.match.id;
+        if (!clientId) {
+          const row = { name: target.name, address: target.address, postal_code: target.postal_code, city: target.city, country: target.country, email: target.email, phone: target.phone, notes: target.notes };
+          const c = await bc.from('clients').insert(row).select().single();
+          if (c.error) throw c.error;
+          clientId = c.data.id;
+          createdClient = true;
+        }
+        const me = state.profiles.find((p) => p.id === state.me.id);
+        const issue = ymd(new Date());
+        const iv = await bc.from('invoices').insert({ client_id: clientId, contact_name: me ? me.name : null, issue_date: issue, due_date: ymd(addDays(new Date(), billingDueDays(st.company))), notes: st.note.trim() || null }).select().single();
+        if (iv.error) throw iv.error;
+        invoice = iv.data;
+        const items = await bc.from('invoice_items').insert(lines.map((l, i) => ({ invoice_id: invoice.id, type: l.type || null, description: l.description.trim(), unit_price: Number(l.price), quantity: Number(l.qty), position: i })));
+        if (items.error) {
+          try { await bc.from('invoices').delete().eq('id', invoice.id); } catch (e2) { /* nettoyage au mieux */ }
+          throw items.error;
+        }
+        const lk = await sb.from('orders').update({ billing_invoice_id: invoice.id, billing_invoice_number: invoice.number, billed_at: new Date().toISOString() }).eq('id', o.id);
+        await loadTable('orders');
+        render();
+        st.done = { number: invoice.number, total: total(), createdClient, linkOk: !lk.error };
+        st.phase = 'done';
+        toast(`Brouillon ${invoice.number} créé dans la facturation`);
+      } catch (e) {
+        const be = billingError(e);
+        st.err = be.text;
+        st.phase = be.relogin ? 'login' : 'ready';
+      }
+      paint();
+    };
+
+    const ov = $('#iv-overlay');
+    ov.addEventListener('mousedown', (e) => { if (e.target.id === 'iv-overlay') close(); });
+    ov.addEventListener('click', (e) => {
+      if (e.target.closest('[data-ivclose]')) { close(); return; }
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.id === 'iv-login') doLogin();
+      else if (btn.id === 'iv-create') doCreate();
+      else if (btn.id === 'iv-logout') { Promise.resolve(bc.auth.signOut({ scope: 'local' })).catch(() => {}).then(() => { st.phase = 'login'; st.err = ''; paint(); }); }
+      else if (btn.id === 'iv-add') { st.lines.push({ type: 'Objet 3D', description: '', qty: '1', price: '' }); paint(); }
+      else if (btn.dataset.ivdel != null) { st.lines.splice(Number(btn.dataset.ivdel), 1); paint(); }
+    });
+    ov.addEventListener('input', (e) => {
+      const tr = e.target.closest('tr[data-i]');
+      if (tr && e.target.dataset.k) {
+        st.lines[Number(tr.dataset.i)][e.target.dataset.k] = e.target.value;
+        tr.querySelector('.iv-lt').textContent = fmtMoney(lineTotal(st.lines[Number(tr.dataset.i)]));
+        const tt = $('#iv-total');
+        if (tt) tt.textContent = fmtMoney(total());
+      }
+      if (e.target.id === 'iv-note') st.note = e.target.value;
+    });
+    ov.addEventListener('change', (e) => { if (e.target.id === 'iv-again') { st.again = e.target.checked; const b = $('#iv-create'); if (b) b.disabled = !!(o.billing_invoice_id && !st.again); } });
+    ov.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'iv-pass') { e.preventDefault(); doLogin(); } });
+
+    paint();
+    if (!bc || !target) return;
+    const { data } = await bc.auth.getSession();
+    if (data && data.session) { st.email = data.session.user.email || st.email; await loadBilling(); } else { st.phase = 'login'; paint(); }
   }
 
   /* ------------------------------------------------------------------ */
@@ -2147,7 +2474,7 @@
   const FIELD_FR = {
     status: 'statut', due_date: 'échéance', price_chf: 'prix', title: 'titre', client: 'client', notes: 'notes',
     start_at: 'début', end_at: 'fin', machine_id: 'machine', order_id: 'commande', assignee: 'responsable',
-    done: 'terminée', kind: 'type', kind: 'type', source: 'origine', stripe_session_id: 'paiement Stripe', member: 'membre', day: 'date', hours: 'heures', activity: 'activité', remaining_g: 'reste (g)', brand: 'marque', filament_type: 'matière', color_name: 'couleur', color_hex: 'teinte', diameter: 'diamètre (mm)', nozzle_min: 'buse min (°C)', nozzle_max: 'buse max (°C)', bed_c: 'plateau (°C)', dry_c: 'séchage (°C)', dry_h: 'séchage (h)', tare_g: 'poids à vide (g)', price_chf: 'prix payé', purchased_at: 'acheté le', supplier: 'fournisseur', location: 'emplacement', opened_at: 'ouverte le', dried_at: 'séchée le', dry_storage: 'stockée au sec', initial_g: 'poids neuf (g)', alert_g: 'seuil d’alerte (g)', label: 'nom', every_h: 'tous les (h)', last_done_at: 'dernier entretien', fail_reason: 'cause de l’échec', done_at: 'terminée le', priority: 'priorité', tags: 'étiquettes', client_id: 'fiche client', duration_h: 'durée (h)', phone: 'téléphone', email: 'e-mail', address: 'adresse', reason: 'raison', reorder_qty: 'quantité à commander', quantity: 'quantité en stock', min_quantity: 'seuil d’alerte', cost_chf: 'prix payé', cost_qty: 'quantité du prix', category: 'catégorie', unit: 'unité', recurrence: 'répétition', recur_until: 'répétition jusqu’au', date_from: 'du', date_to: 'au', user_id: 'personne', note: 'note', name: 'nom'
+    done: 'terminée', kind: 'type', kind: 'type', source: 'origine', stripe_session_id: 'paiement Stripe', member: 'membre', day: 'date', hours: 'heures', activity: 'activité', remaining_g: 'reste (g)', hourly_rate: 'tarif horaire (CHF/h)', labor_h: 'main-d’œuvre (h)', billing_invoice_number: 'facture', billed_at: 'facturée le', brand: 'marque', filament_type: 'matière', color_name: 'couleur', color_hex: 'teinte', diameter: 'diamètre (mm)', nozzle_min: 'buse min (°C)', nozzle_max: 'buse max (°C)', bed_c: 'plateau (°C)', dry_c: 'séchage (°C)', dry_h: 'séchage (h)', tare_g: 'poids à vide (g)', price_chf: 'prix payé', purchased_at: 'acheté le', supplier: 'fournisseur', location: 'emplacement', opened_at: 'ouverte le', dried_at: 'séchée le', dry_storage: 'stockée au sec', initial_g: 'poids neuf (g)', alert_g: 'seuil d’alerte (g)', label: 'nom', every_h: 'tous les (h)', last_done_at: 'dernier entretien', fail_reason: 'cause de l’échec', done_at: 'terminée le', priority: 'priorité', tags: 'étiquettes', client_id: 'fiche client', duration_h: 'durée (h)', phone: 'téléphone', email: 'e-mail', address: 'adresse', reason: 'raison', reorder_qty: 'quantité à commander', quantity: 'quantité en stock', min_quantity: 'seuil d’alerte', cost_chf: 'prix payé', cost_qty: 'quantité du prix', category: 'catégorie', unit: 'unité', recurrence: 'répétition', recur_until: 'répétition jusqu’au', date_from: 'du', date_to: 'au', user_id: 'personne', note: 'note', name: 'nom'
   };
   const VAL_FR = {
     todo: 'à faire', doing: 'en cours', done: 'terminé', planned: 'planifiée', printing: 'en impression',
@@ -2257,10 +2584,14 @@
         [{ k: 'client', l: 'Nom du client', t: 'text' }, { k: 'status', l: 'État', t: 'select', o: () => ORDER_STATUS }],
         { k: 'title', l: 'Objet de la commande', t: 'text', req: true },
         [{ k: 'due_date', l: 'Échéance', t: 'date' }, { k: 'price_chf', l: 'Prix (CHF)', t: 'number', step: '0.05' }],
+        { k: 'labor_h', l: 'Temps de préparation et de finition (heures)', t: 'number', step: '0.25', hint: 'Modélisation, réglages, ponçage, emballage… compté au tarif horaire de la main-d’œuvre (bouton « Tarifs »).' },
         { k: 'tags', l: 'Étiquettes (séparées par des virgules)', t: 'text', hint: 'Exemples : laser, impression 3D, cadeau' },
         { k: 'notes', l: 'Notes', t: 'textarea' }
       ],
-      extraHtml: (rec) => (rec && rec.source === 'boutique'
+      extraHtml: (rec) => (rec ? `<div class="files billing-box"><h4>Facturation</h4>
+        ${rec.billing_invoice_number ? `<div class="bb-line">Brouillon créé dans la facturation : <b>${esc(rec.billing_invoice_number)}</b>${rec.billed_at ? ` le ${esc(fmtDateTime(rec.billed_at))}` : ''}</div>` : '<small class="hint-line">Aucune facture créée pour cette commande.</small>'}
+        <div><button type="button" class="btn btn-small" data-act="order-invoice" data-id="${rec.id}">${rec.billing_invoice_number ? 'Créer une autre facture…' : 'Créer un brouillon de facture…'}</button></div>
+        <small class="hint-line">Enregistre d’abord les modifications de la commande : la facture reprend les données enregistrées.</small></div>` : '') + (rec && rec.source === 'boutique'
         ? `<div class="files"><h4>Commande de la boutique du site</h4><small class="hint-line">Payée par carte via Stripe${rec.stripe_session_id ? ` (${esc(rec.stripe_session_id)})` : ''}. Le détail des articles et l’adresse sont dans les notes.</small></div>` : ''),
       prepare: (v) => {
         v.tags = v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
@@ -2576,19 +2907,30 @@
           });
         }
       } else {
-        const c = orderCost(rec ? rec.id : null, rows);
         const priceEl = $('#f_price_chf');
+        const laborEl = $('#f_labor_h');
         const price = priceEl && priceEl.value !== '' ? Number(priceEl.value) : null;
-        const hours = rec ? printHours(rec.id) : '';
+        const pf = orderProfit(rec ? rec.id : null, rows, price, laborEl ? laborEl.value : '');
+        const c = pf.mat;
+        const t = tariffs();
         const lines = [];
-        if (c.prints > 0) lines.push(`Impressions liées : ${esc(fmtMoney(c.prints))}`);
+        if (c.prints > 0) lines.push(`Matière des impressions liées : ${esc(fmtMoney(c.prints))}`);
         if (c.extras > 0) lines.push(`Matières ajoutées : ${esc(fmtMoney(c.extras))}`);
-        if (lines.length || c.total > 0) {
-          html = `${lines.join('<br>')}<div>Coût matière : <b>${esc(fmtMoney(c.total))}</b></div>`;
-          if (price != null && !Number.isNaN(price)) html += `<div>Prix de vente ${esc(fmtMoney(price))}, il reste <b>${esc(fmtMoney(price - c.total))}</b> après la matière</div>`;
+        if (pf.mc.hours > 0) lines.push(`Temps de machine : ${esc(fmtMoney(pf.mc.cost))} <small>(${esc(fmtNum(Math.round(pf.mc.hours * 10) / 10))} h${pf.mc.estimated ? ', planifié' : ''})</small>`);
+        if (pf.laborH > 0) lines.push(`Main-d’œuvre : ${esc(fmtMoney(pf.laborCost))} <small>(${esc(fmtNum(pf.laborH))} h × ${esc(fmtMoney(t.labor))})</small>`);
+        if (pf.cost > 0) {
+          html = `${lines.join('<br>')}<div class="cb-total">Coût total : <b>${esc(fmtMoney(pf.cost))}</b></div>`;
+          if (pf.price != null) {
+            html += `<div class="cb-margin ${pf.pct != null ? marginClass(pf.pct, pf.target) : ''}">Prix de vente ${esc(fmtMoney(pf.price))} : marge <b>${esc(fmtMoney(pf.margin))}</b>${pf.pct != null ? ` (<b>${esc(fmtNum(Math.round(pf.pct)))} %</b>)` : ''}</div>`;
+          }
+          if (pf.suggested != null) {
+            html += `<div class="cb-sugg">Prix conseillé pour ${esc(fmtNum(pf.target))} % de marge : <b>${esc(fmtMoney(pf.suggested))}</b> <button type="button" class="btn btn-small" data-use-price="${pf.suggested}">Utiliser ce prix</button></div>`;
+          }
         }
-        if (hours) html += `<small class="hint-line">Temps d’impression planifié : ${esc(hours)}</small>`;
+        if (pf.mc.hours > 0 && pf.mc.missing.length) html += `<small class="hint-line">Tarif horaire manquant pour : ${esc(pf.mc.missing.join(', '))}. <button type="button" class="linkbtn" data-act="tariffs">Régler les tarifs</button></small>`;
+        if (pf.laborRateMissing) html += `<small class="hint-line">Le tarif de la main-d’œuvre n’est pas réglé. <button type="button" class="linkbtn" data-act="tariffs">Régler les tarifs</button></small>`;
         if (c.missing.length) html += `<small class="hint-line">Prix manquant pour : ${esc(c.missing.join(', '))}</small>`;
+        if (pf.cost > 0 && !html.includes('data-act="tariffs"') && t.labor === 0 && pf.laborH === 0) html += '<small class="hint-line">Le temps de préparation et de finition compte aussi : indique-le plus haut pour une marge réaliste.</small>';
       }
       box.innerHTML = html;
       box.classList.toggle('hidden', !html);
@@ -2643,6 +2985,15 @@
       });
       const priceEl = $('#f_price_chf');
       if (priceEl) priceEl.addEventListener('input', refreshCost);
+      const laborEl2 = $('#f_labor_h');
+      if (laborEl2) laborEl2.addEventListener('input', refreshCost);
+      const costBox = $('#cost-box');
+      if (costBox) costBox.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-use-price]');
+        if (!b || !priceEl) return;
+        priceEl.value = b.dataset.usePrice;
+        refreshCost();
+      });
       const machEl = $('#f_machine_id');
       if (machEl && def.uses === 'print') machEl.addEventListener('change', refreshCost);
     }
@@ -3491,6 +3842,8 @@
       case 'trash-delete': deleteTrash(el.dataset.id); break;
       case 'maint-done': markMaintenanceDone(el.dataset.id); break;
       case 'srange': state.statsRange = Number(el.dataset.r); render(); break;
+      case 'tariffs': openTariffs(); break;
+      case 'order-invoice': openInvoiceDraft(el.dataset.id); break;
       case 'fil-tab': state.filTab = el.dataset.tab; render(); break;
       case 'fil-filter': state.filFilter = el.dataset.f; render(); break;
       case 'spool-detail': openSpoolDetail(el.dataset.id); break;
@@ -4039,5 +4392,5 @@
     }
   })();
 
-  window.__dayan = { labelData, openLabelDialog, scanPayload, qrSvg, handleScanLink, openScanned, needsDrying, filTitle, openWeigh, openSpoolDetail, billingExport, splitAddress, startTour, maybeOfferTour, openHelp, tourSteps: TOUR_STEPS, state, render, loadAll, computeReminders, checkReminders, prefs, purgeOldTrash, planJobs, handlePrinterStatus, liveOf, getPrinterCfg: () => printerCfg };
+  window.__dayan = { orderProfit, tariffs, openTariffs, openInvoiceDraft, labelData, openLabelDialog, scanPayload, qrSvg, handleScanLink, openScanned, needsDrying, filTitle, openWeigh, openSpoolDetail, billingExport, splitAddress, startTour, maybeOfferTour, openHelp, tourSteps: TOUR_STEPS, state, render, loadAll, computeReminders, checkReminders, prefs, purgeOldTrash, planJobs, handlePrinterStatus, liveOf, getPrinterCfg: () => printerCfg };
 })();

@@ -334,6 +334,26 @@ alter table public.spools
   add column if not exists dried_at date,
   add column if not exists dry_storage boolean not null default false;
 
+-- ---------- Lot 2.10.0 : rentabilité des commandes, lien avec la facturation ----------
+-- tarif horaire de chaque machine (électricité, usure, amortissement) en CHF par heure
+alter table public.machines add column if not exists hourly_rate numeric(8,2) check (hourly_rate is null or hourly_rate >= 0);
+
+-- temps de préparation et de finition d'une commande, et lien vers la facture créée dans la facturation
+-- (la facturation est une autre base : le lien est un simple repère, sans clé étrangère)
+alter table public.orders
+  add column if not exists labor_h numeric(6,2) check (labor_h is null or labor_h >= 0),
+  add column if not exists billing_invoice_id uuid,
+  add column if not exists billing_invoice_number text,
+  add column if not exists billed_at timestamptz;
+
+-- réglages partagés par toute l'équipe : tarif de la main-d'œuvre, marge souhaitée, arrondi du prix
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now(),
+  updated_by uuid default auth.uid()
+);
+
 -- mise à jour automatique de updated_at
 create or replace function public.touch_updated_at() returns trigger
 language plpgsql as $$
@@ -376,7 +396,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['orders','prints','tasks','availability','materials','clients','print_templates','spools','volunteer_hours','printer_status'] loop
+  foreach t in array array['orders','prints','tasks','availability','materials','clients','print_templates','spools','volunteer_hours','printer_status','app_settings'] loop
     execute format('drop trigger if exists trg_touch on public.%I', t);
     execute format('create trigger trg_touch before update on public.%I for each row execute function public.touch_updated_at()', t);
   end loop;
@@ -685,7 +705,7 @@ create trigger trg_spool before insert or update on public.spools
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','materials','material_uses','comments','machine_blocks','clients','print_templates','maintenance_rules','spools','volunteer_hours','printer_status'] loop
+  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','materials','material_uses','comments','machine_blocks','clients','print_templates','maintenance_rules','spools','volunteer_hours','printer_status','app_settings'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "equipe" on public.%I', t);
     execute format('create policy "equipe" on public.%I for all to authenticated using (true) with check (true)', t);
@@ -729,7 +749,7 @@ create policy "equipe fichiers" on storage.objects
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','history','materials','material_uses','stock_moves','comments','comment_reads','machine_blocks','clients','print_templates','maintenance_rules','trash','spools','volunteer_hours','printer_status'] loop
+  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','history','materials','material_uses','stock_moves','comments','comment_reads','machine_blocks','clients','print_templates','maintenance_rules','trash','spools','volunteer_hours','printer_status','app_settings'] loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);
     exception when duplicate_object then null;

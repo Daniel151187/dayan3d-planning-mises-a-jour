@@ -723,3 +723,54 @@ modifications en direct, quel que soit l'ordinateur.
    D. Ce qui reste a la main
       Le script supabase-schema.sql : quand une version l'exige (je te le
       signale), il faut le relancer dans Supabase (SQL Editor > Run).
+
+
+25) VERSION 2.10.0 : RENTABILITE DES COMMANDES ET FACTURE DEPUIS LA COMMANDE
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase du
+      PLANNING (SQL Editor > New query > Run). Il ajoute le tarif horaire
+      des machines, le temps de main-d'oeuvre des commandes, le lien vers
+      la facture et une table de reglages partages. Il peut etre relance
+      sans danger. Rien a changer dans la base de la facturation.
+   b. TARIFS : bouton "Tarifs" (pages Machines et Statistiques, ou dans une
+      commande) : le cout d'une heure de chaque machine (electricite,
+      usure, amortissement ; repere : 1 a 3 CHF de l'heure pour une
+      imprimante de bureau, a adapter), le tarif horaire de la
+      main-d'oeuvre, la marge souhaitee (% du prix de vente) et l'arrondi du
+      prix conseille. Les tarifs sont partages avec toute l'equipe.
+   c. DANS UNE COMMANDE : nouveau champ "Temps de preparation et de
+      finition (heures)". Le bloc de cout affiche : matiere + temps de
+      machine + main-d'oeuvre = cout total, puis la marge (en francs et en
+      %) et le PRIX CONSEILLE pour atteindre ta marge souhaitee ("Utiliser
+      ce prix" le recopie dans le champ Prix). Le temps de machine d'une
+      impression planifiee est une estimation tant qu'elle n'est pas
+      terminee. Si un tarif manque, l'appli te le dit.
+   d. TABLEAU DES COMMANDES : pastille "Marge xx %" sur chaque carte (vert =
+      marge atteinte, orange = en dessous de la marge souhaitee, rouge =
+      commande a perte).
+   e. STATISTIQUES : indicateur "Marge" de la periode et liste des 5
+      commandes les moins rentables.
+   f. COMMANDE VERS FACTURE : dans une commande enregistree, section
+      "Facturation" > "Creer un brouillon de facture...".
+      - La premiere fois, connecte-toi avec ton compte de l'appli de
+        facturation (meme e-mail, meme mot de passe ; le mot de passe n'est
+        pas enregistre, la session reste ouverte sur l'appareil).
+      - Le client est retrouve dans la facturation (par e-mail, sinon par
+        nom) ou ajoute depuis sa fiche.
+      - Tu modifies si besoin les lignes (objet et prix de la commande par
+        defaut ; ajoute des frais de port, etc.) et une note.
+      - "Creer le brouillon" : la facture est creee EN BROUILLON dans la
+        facturation, sans etre finalisee ni envoyee. Tu la verifies la-bas,
+        tu choisis le mode de paiement (carte ou QR-facture), puis tu la
+        finalises.
+      - Le numero (ex. FA-2026-0007) s'affiche dans la commande et sur sa
+        carte. Si une facture existe deja pour la commande, l'appli te
+        previent et demande une confirmation avant d'en creer une autre.
+      - Si les lignes sont refusees par la facturation, la facture vide
+        est supprimee : rien ne reste a moitie fait.
+      - L'echeance suit le delai de paiement de tes reglages de
+        facturation s'il est trouve, sinon 30 jours (modifiable la-bas).
+   g. Aide integree : articles "Rentabilite et prix conseille" et "Creer un
+      brouillon de facture dans la facturation".
+   h. Publication : glisse le dossier "app" sur la page d'envoi GitHub
+      (section 24) : l'installateur et la version web sont publies
+      automatiquement.
