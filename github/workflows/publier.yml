@@ -1,0 +1,107 @@
+# Publication automatique de Dayan 3D Planning.
+# À chaque nouvelle version déposée dans le dossier « app », GitHub :
+#   1. vérifie les fichiers (refuse un paquet abîmé) ;
+#   2. fabrique l'installateur Windows et publie la release (l'appli Windows la télécharge toute seule) ;
+#   3. met la version web (téléphone, tablette) en ligne.
+# Pour relancer à la main : onglet « Actions », puis « Publier une nouvelle version », puis « Run workflow ».
+name: Publier une nouvelle version
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # créer la release
+  pages: write      # mettre la version web en ligne
+  id-token: write   # requis par GitHub Pages
+
+concurrency:
+  group: publication
+  cancel-in-progress: false
+
+jobs:
+  verifier:
+    name: 1. Vérifier les fichiers
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      nouvelle: ${{ steps.info.outputs.nouvelle }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Contrôle du paquet
+        run: node app/tools/verifier.js app app
+      - name: Version à publier
+        id: info
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./app/package.json').version")
+          echo "Version : $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "La release v$VERSION existe déjà : l'installateur Windows ne sera pas refait."
+            echo "nouvelle=non" >> "$GITHUB_OUTPUT"
+          else
+            echo "nouvelle=oui" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    name: 2. Fabriquer l'installateur Windows
+    needs: verifier
+    if: needs.verifier.outputs.nouvelle == 'oui'
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installer les composants
+        working-directory: app
+        run: npm install --no-audit --no-fund
+      - name: Fabriquer l'installateur
+        working-directory: app
+        run: npm run dist
+      - name: Publier la release
+        working-directory: app
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.verifier.outputs.version }}
+        run: |
+          ls -la dist
+          test -f dist/latest.yml
+          test -f "dist/Dayan3D-Planning-Setup-$VERSION.exe"
+          test -f "dist/Dayan3D-Planning-Setup-$VERSION.exe.blockmap"
+          gh release create "v$VERSION" \
+            dist/latest.yml \
+            "dist/Dayan3D-Planning-Setup-$VERSION.exe" \
+            "dist/Dayan3D-Planning-Setup-$VERSION.exe.blockmap" \
+            --title "Version $VERSION" \
+            --notes "Version $VERSION de Dayan 3D Planning. L'application Windows installée se met à jour toute seule. Détails : fichier LISEZMOI.txt du dossier app." \
+            --latest \
+            --target "$GITHUB_SHA"
+
+  web:
+    name: 3. Mettre la version web en ligne
+    needs: verifier
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/renderer
+      - name: Mise en ligne
+        id: deploiement
+        uses: actions/deploy-pages@v4
