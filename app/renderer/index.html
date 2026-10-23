@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.supabase.co; connect-src https://*.supabase.co wss://*.supabase.co">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#151618">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Planning Dayan">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="img/favicon-32.png">
+  <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+  <title>Dayan 3D Planning</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <section id="login" class="login hidden">
+    <form id="login-form" class="login-card" autocomplete="on">
+      <img src="img/logo.png" alt="Dayan 3D" class="login-logo">
+      <h1>Planning Dayan 3D</h1>
+      <p class="login-sub">Connecte-toi avec ton compte d'équipe.</p>
+      <label class="field">
+        <span>Adresse e-mail</span>
+        <input id="login-email" type="email" required autocomplete="username">
+      </label>
+      <label class="field">
+        <span>Mot de passe</span>
+        <input id="login-pass" type="password" required autocomplete="current-password">
+      </label>
+      <p id="login-error" class="form-error" role="alert"></p>
+      <button class="btn btn-primary btn-wide" type="submit" id="login-btn">Se connecter</button>
+    </form>
+  </section>
+
+  <div id="app" class="app hidden">
+    <aside class="side">
+      <div class="brand">
+        <img src="img/logo.png" alt="" class="brand-logo">
+        <div class="brand-name">Dayan 3D</div>
+        <div class="brand-sub">Planning</div>
+      </div>
+      <button class="search-btn" id="open-search" type="button" data-act="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Rechercher</span><kbd>Ctrl K</kbd></button>
+      <nav id="nav" class="nav" aria-label="Vues"></nav>
+      <div class="side-foot">
+        <div class="me" id="me"></div>
+        <div class="sync" id="sync"><span class="dot"></span><span id="sync-text">Connexion…</span></div>
+        <div class="upd hidden" id="upd" aria-live="polite">
+          <span id="upd-text"></span>
+          <button class="btn btn-primary btn-small hidden" id="upd-install" type="button">Redémarrer et installer</button>
+        </div>
+        <div class="ver"><span id="ver"></span><button class="btn btn-quiet btn-small" id="upd-check" type="button">Mises à jour</button></div>
+        <div class="foot-row">
+          <button class="btn btn-quiet btn-small" id="open-settings" type="button">Réglages</button>
+          <button class="btn btn-quiet btn-small" id="logout" type="button">Se déconnecter</button>
+        </div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="top" id="top"></header>
+      <section class="view" id="view" tabindex="-1"></section>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="menu-root"></div>
+  <div id="layer-root"></div>
+  <div id="tour-root"></div>
+  <div id="print-root"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div class="backdrop" data-act="menu-close"></div>
+  <script src="boot.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="vendor/qrcode.js"></script>
+  <script src="config.js"></script>
+  <script src="pwa.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

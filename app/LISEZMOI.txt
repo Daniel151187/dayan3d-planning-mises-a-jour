@@ -1,0 +1,725 @@
+\xef\xbb\xbfPLANNING DAYAN 3D - Application Windows
+=======================================
+
+1) PREPARER LE SERVEUR (une seule fois, sur supabase.com)
+   a. Ouvre ton projet > SQL Editor > New query.
+   b. Colle tout le contenu de supabase-schema.sql puis clique sur Run.
+   c. Authentication > Users > Add user > Create new user :
+      cree un compte (e-mail + mot de passe) pour chaque collaborateur,
+      en cochant "Auto Confirm User".
+   d. Authentication > Sign In / Providers (ou Settings) :
+      desactive "Allow new users to sign up".
+      Ainsi, seuls les comptes que tu as crees peuvent se connecter.
+
+2) TESTER L'APPLICATION
+   Double-clique sur Tester-appli.bat
+   (Node.js LTS doit etre installe : https://nodejs.org)
+
+3) CREER L'INSTALLATEUR
+   Double-clique sur Creer-installateur.bat
+   Le fichier .exe apparait dans le dossier "dist".
+   Copie-le sur chaque ordinateur et installe-le.
+
+Les donnees sont stockees dans Supabase : tout le monde voit les
+modifications en direct, quel que soit l'ordinateur.
+
+4) MISES A JOUR AUTOMATIQUES
+   Une seule fois :
+   a. Sur github.com, cree un depot PUBLIC nomme
+      dayan3d-planning-mises-a-jour
+      (un depot par application : ne reutilise pas celui de la facturation).
+   b. L'adresse du depot est deja reglee sur le compte Daniel151187
+      (fichiers updates.json et package.json).
+   c. Lance Creer-installateur.bat et installe le .exe (version 1.1.0).
+
+   Pour chaque nouvelle version :
+   a. Change le numero "version" dans package.json (ex. 1.1.1).
+   b. Lance Creer-installateur.bat.
+   c. Sur GitHub : depot > Releases > Draft a new release.
+      Tag : v1.1.1. Glisse ces 3 fichiers du dossier "dist" :
+        - latest.yml
+        - Dayan3D-Planning-Setup-1.1.1.exe
+        - Dayan3D-Planning-Setup-1.1.1.exe.blockmap
+      Puis clique sur Publish release.
+   d. Chaque ordinateur detecte la nouvelle version au lancement (puis
+      toutes les 4 heures), la telecharge, et affiche un bouton rouge
+      "Redemarrer et installer" en bas a gauche.
+
+   Remarques :
+   - Windows peut afficher un avertissement SmartScreen a la premiere
+     installation (application non signee) : "Informations complementaires"
+     puis "Executer quand meme".
+   - Une mise a jour de l'application ne modifie pas la base Supabase :
+     si une version demande un changement de base, un nouveau script SQL
+     sera fourni a lancer dans le SQL Editor.
+
+
+5) NOUVEAUTES DE LA VERSION 1.2.0
+   a. IMPORTANT : relance le fichier supabase-schema.sql en entier dans
+      Supabase (SQL Editor > New query > Run). Il peut etre relance sans
+      danger. Il ajoute la repetition des taches et la machine liee.
+   b. Taches recurrentes : dans une tache, choisis "Repetition" (chaque
+      jour, semaine ou mois) et, si besoin, une date de fin. Quand tu
+      coches la tache, la suivante est creee automatiquement (jamais dans
+      le passe). Tu peux lier la tache a une machine (entretien, nettoyage).
+   c. Rappels Windows : bouton "Reglages" en bas a gauche. Rappel avant une
+      tache ou un rendez-vous (5 a 60 min), impression a verifier, resume
+      du matin des commandes a rendre ou en retard.
+   d. Pour recevoir les rappels fenetre fermee : l'application reste active
+      pres de l'horloge (icone dans la zone de notification). Pour la
+      quitter vraiment : clic droit sur l'icone > Quitter. Tu peux aussi
+      la lancer au demarrage de Windows (Reglages).
+   e. Publication : change "version" en 1.2.0 (deja fait), lance
+      Creer-installateur.bat, puis cree la release v1.2.0 sur GitHub avec
+      les 3 fichiers du dossier dist. Les ordinateurs avec la 1.1.0
+      recevront la mise a jour automatiquement.
+
+
+6) NOUVEAUTES DE LA VERSION 1.3.0 : STOCK ET COUT MATIERE
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run). Il ajoute le stock. Sans cela,
+      l'onglet Stock affichera une erreur.
+   b. Onglet Stock : filaments (en grammes), bois et plaques, autres
+      consommables. "+ Matiere" pour en creer une : nom, unite, quantite
+      actuelle, seuil d'alerte, et prix (ex. 25 CHF pour 1000 g).
+   c. Baisse automatique : sur une impression, ajoute les matieres
+      utilisees (poids de filament, plaques...). Idem sur une commande
+      pour les vis, colle, emballages. Le stock baisse quand l'impression
+      ou la commande passe a "Terminee", et remonte si tu la remets en
+      arriere ou si tu la supprimes.
+   d. Baisse ou hausse manuelle : bouton "Ajuster" (achat, perte ou
+      correction, inventaire). Tout est garde dans l'historique de la
+      matiere.
+   e. Alerte stock bas : pastille rouge sur l'onglet Stock et rappel
+      Windows le matin (option dans Reglages).
+   f. Cout matiere : dans une commande, tu vois le cout des impressions
+      liees + des matieres ajoutees, et ce qu'il reste sur le prix de
+      vente apres la matiere. Le temps d'impression planifie est indique.
+   g. Publication : version deja reglee sur 1.3.0. Lance
+      Creer-installateur.bat, puis cree la release v1.3.0 sur GitHub avec
+      les 3 fichiers du dossier dist.
+
+
+7) NOUVEAUTES DE LA VERSION 1.4.0 : COMMENTAIRES SUR LES COMMANDES
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run). Il ajoute les commentaires.
+   b. Ouvre une commande : en bas de la fenetre, "Commentaires de
+      l'equipe". Ecris ton message et clique sur Envoyer (ou Ctrl+Entree).
+      Un commentaire part tout de suite, sans cliquer sur Enregistrer.
+      Pour une nouvelle commande, enregistre-la d'abord.
+   c. Pastille rouge "N nouveau(x)" sur la carte de la commande et
+      pastille sur l'onglet Commandes quand un collegue a ecrit. Elle
+      disparait quand tu ouvres la commande (chacun a sa propre lecture).
+   d. Rappel Windows quand un collegue ecrit (option dans Reglages).
+   e. Les commentaires apparaissent aussi dans l'historique.
+   f. Publication : version deja reglee sur 1.4.0. Lance
+      Creer-installateur.bat, puis cree une NOUVELLE release v1.4.0 sur
+      GitHub (Draft a new release) avec les 3 fichiers du dossier dist.
+
+
+8) NOUVEAUTES DE LA VERSION 1.5.0
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run).
+   b. Page "Aujourd'hui" (premier onglet, ouverte au lancement) :
+      etat des machines, impressions du jour, taches et rendez-vous,
+      commandes a rendre (3 jours), stocks bas, nouveaux commentaires,
+      equipe presente ou absente. Un clic ouvre l'element concerne.
+   c. Liste "a racheter" en haut de l'onglet Stock : les matieres sous
+      leur seuil, la quantite proposee et un cout estime. Bouton "Copier
+      la liste" pour la coller dans un message. Pour chaque matiere, tu
+      peux regler la "quantite habituelle a commander".
+   d. Blocage de machine (entretien, panne) : bouton "+ Blocage" dans
+      l'onglet Machines ou menu "+ Nouveau". La periode apparait hachuree
+      sur la frise et dans le calendrier.
+   e. Alerte de chevauchement : si une impression se superpose a une
+      autre ou a un blocage sur la meme machine, l'appli te previent et
+      te laisse choisir d'enregistrer quand meme. Sur la frise, les
+      impressions en conflit sont entourees de rouge.
+   f. Publication : version reglee sur 1.5.0. Lance
+      Creer-installateur.bat, cree une NOUVELLE release v1.5.0 sur
+      GitHub avec les 3 fichiers du dossier dist.
+
+
+9) NOUVEAUTES DE LA VERSION 1.6.0
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run).
+   b. Recherche globale : bouton "Rechercher" en haut a gauche, ou
+      Ctrl + K. Cherche dans les commandes, clients, impressions, taches,
+      matieres, modeles, commentaires et noms de fichiers. Les accents
+      sont ignores. Entree ouvre le premier resultat.
+   c. Clients : nouvel onglet. Chaque fiche a un telephone, un e-mail,
+      une adresse et des notes, et liste toutes ses commandes avec le
+      total. Si tes commandes ont deja des noms de clients, le bouton
+      "Creer les fiches depuis les commandes" cree les fiches et relie
+      tout en une fois. Dans une commande, choisis la "Fiche client".
+   d. Priorites et etiquettes : dans une commande, "Priorite" (normale
+      ou urgente) et "Etiquettes" separees par des virgules (laser,
+      impression 3D, cadeau...). Les urgentes passent en tete de colonne
+      avec une pastille rouge. En haut de l'onglet Commandes : filtre
+      Toutes/Urgentes et filtre par etiquette.
+   e. Modeles d'impression : onglet Machines, panneau en bas. "+ Modele"
+      cree une piece refaite souvent (machine, duree, matieres). "Creer
+      l'impression" ouvre une impression deja remplie. Dans une
+      impression existante, "Enregistrer comme modele" en cree un d'un
+      clic. Dans une nouvelle impression, "Partir d'un modele".
+   f. Publication : version reglee sur 1.6.0. Lance
+      Creer-installateur.bat, cree une NOUVELLE release v1.6.0 sur
+      GitHub avec les 3 fichiers du dossier dist.
+
+
+10) NOUVEAUTES DE LA VERSION 1.7.0 : STATISTIQUES
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run). Il enregistre la date de fin de
+      chaque commande. Les commandes deja terminees gardent leur derniere
+      date de modification comme date de fin.
+   b. Nouvel onglet "Statistiques" avec une periode au choix (30 jours,
+      3 mois, 12 mois) :
+      - commandes terminees, chiffre d'affaires, cout matiere et ce qu'il
+        reste apres la matiere ;
+      - heures d'impression et taux d'occupation (sur 24 h par jour) ;
+      - delai moyen entre la creation et la fin d'une commande, et part
+        des commandes rendues a l'heure (celles qui ont une echeance) ;
+      - heures par machine, commandes terminees par mois (12 mois),
+        meilleurs clients, matieres les plus utilisees.
+   c. Les heures comptent les impressions "En impression" ou "Terminee".
+      Pense a passer une impression a "Terminee" pour qu'elle soit
+      comptee et pour que le stock baisse.
+   d. Publication : version reglee sur 1.7.0. Lance
+      Creer-installateur.bat, cree une NOUVELLE release v1.7.0 sur
+      GitHub avec les 3 fichiers du dossier dist.
+
+
+11) NOUVEAUTES DE LA VERSION 1.8.0 : COMMANDES DE LA BOUTIQUE DU SITE
+   Quand un client paie par carte sur dayan-3d.ch, une commande est creee
+   toute seule dans le planning, avec sa fiche client, et l'equipe recoit
+   un rappel Windows.
+
+   A. Dans Supabase (projet du planning)
+      1. SQL Editor : relance supabase-schema.sql en entier.
+      2. Edge Functions > Deploy a new function > Via Editor.
+         Nom : shop-order
+         Colle tout le contenu du fichier
+         supabase/functions/shop-order/index.ts puis Deploy.
+      3. Dans les reglages de cette fonction, desactive "Verify JWT"
+         (Stripe n'envoie pas de jeton Supabase).
+      4. Edge Functions > Secrets, ajoute :
+         - STRIPE_SECRET_KEY : la cle secrete Stripe de ton compte
+           (celle du site). Une cle restreinte avec la seule lecture
+           des "Checkout Sessions" suffit.
+         - STRIPE_WEBHOOK_SECRET : voir l'etape B ci-dessous.
+         - SHOP_URL_CONTAINS (facultatif) : dayan-3d.ch par defaut.
+           Sert a ne traiter que les paiements du site.
+
+   B. Dans Stripe
+      1. Developpeurs > Webhooks > Ajouter un endpoint.
+      2. URL : https://ufxuxonsnakmiwmnzmuc.supabase.co/functions/v1/shop-order
+      3. Evenement : checkout.session.completed
+      4. Copie le "Secret de signature" (whsec_...) et mets-le dans le
+         secret STRIPE_WEBHOOK_SECRET de Supabase.
+      Les paiements de factures (liens de paiement de l'appli de
+      facturation) sont ignores automatiquement. Les webhooks du site et
+      de la facturation continuent de fonctionner.
+
+   C. Tester
+      Fais un petit achat sur la boutique (tu pourras le rembourser dans
+      Stripe). La commande apparait dans l'onglet Commandes (etiquette
+      "boutique"), dans le panneau "Boutique en ligne : a traiter" de la
+      page Aujourd'hui, et un rappel Windows s'affiche si l'appli est
+      ouverte ou active pres de l'horloge.
+      En cas de souci : Stripe > Webhooks > ton endpoint > Livraisons
+      montre la reponse de la fonction. 400 = secret de signature
+      incorrect ; 500 = un secret manque ; "hors boutique" = regle
+      SHOP_URL_CONTAINS.
+
+   D. Dans l'appli : Reglages > "Prevenir des nouvelles commandes de la
+      boutique du site" (actif par defaut).
+
+   E. Publication : version reglee sur 1.8.0. Lance
+      Creer-installateur.bat, cree une NOUVELLE release v1.8.0 sur
+      GitHub avec les 3 fichiers du dossier dist.
+
+
+12) NOUVEAUTES DE LA VERSION 1.9.0 : PHOTOS AVANT/APRES ET ETIQUETTES QR
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run). Il distingue les photos des autres
+      fichiers.
+   b. Photos avant / apres : dans une commande, deux zones "Avant" et
+      "Apres" avec un bouton "Ajouter" (plusieurs photos d'un coup).
+      Un clic sur une miniature l'agrandit. Les photos sont reduites
+      automatiquement (1600 px) pour ne pas remplir le stockage. La carte
+      de la commande indique le nombre de photos. Pour une nouvelle
+      commande, enregistre-la d'abord.
+      La zone "Fichiers joints" reste pour les STL, plans et documents.
+   c. Etiquettes QR : bouton "Etiquette QR" dans une commande ou dans une
+      matiere (une bobine, par exemple). Choisis le format (rouleau
+      62 x 29 mm Brother/Dymo, 50 x 30, 70 x 40 ou feuille A4) et le
+      nombre d'exemplaires, puis "Imprimer". La boite d'impression de
+      Windows s'ouvre : tu peux aussi choisir "Enregistrer en PDF".
+      L'etiquette porte le QR, le nom du client et l'objet, l'echeance et
+      un numero court.
+   d. Retrouver un element avec l'etiquette : avec un lecteur de codes
+      USB (il "tape" le code), scanne l'etiquette n'importe ou dans
+      l'appli : la recherche s'ouvre toute seule et Entree ouvre la
+      commande ou la matiere. Sans lecteur : Ctrl + K puis tape le code
+      ecrit sous le QR (ex. D3D:C:abcdef12). Une camera de telephone lit
+      le QR et affiche ce code.
+   e. Publication : version reglee sur 1.9.0. Lance
+      Creer-installateur.bat, cree une NOUVELLE release v1.9.0 sur
+      GitHub avec les 3 fichiers du dossier dist.
+
+
+13) VERSION 2.0.0 : TABLETTE ET TELEPHONE (APPLICATION WEB)
+   La meme application, adaptee aux ecrans tactiles (Android, iPhone,
+   iPad), avec les memes comptes et la meme base. Elle s'installe sur
+   l'ecran d'accueil et garde le menu, la recherche, les photos et les
+   etiquettes. Elle ne remplace pas l'appli Windows : les deux se
+   synchronisent en direct.
+
+   A. Mettre l'application web en ligne (une seule fois)
+      1. Decompresse dayan3d-web.zip.
+      2. Sur github.com, ouvre ton depot dayan3d-planning-mises-a-jour >
+         Add file > Upload files.
+      3. Glisse TOUT le contenu du dossier decompresse (index.html et les
+         dossiers fonts, img, vendor...), pas le zip. Clique sur
+         "Commit changes".
+      4. Depot > Settings > Pages > Source : "Deploy from a branch" >
+         Branch : main, dossier : / (root) > Save.
+      5. Apres 1 ou 2 minutes, l'adresse apparait :
+         https://daniel151187.github.io/dayan3d-planning-mises-a-jour/
+
+   B. L'utiliser
+      - Ouvre cette adresse sur la tablette ou le telephone et connecte-toi
+        avec ton compte de l'equipe.
+      - Android (Chrome) : menu (trois points) > "Installer l'application".
+      - iPhone / iPad (Safari) : bouton Partager > "Sur l'ecran d'accueil".
+      - Menu a gauche : le bouton a trois traits en haut a gauche.
+      - Pour changer l'etat d'une commande, ouvre-la (le glisser-deposer
+        ne marche pas au doigt).
+      - Notifications : Reglages > "Autoriser les notifications". Elles
+        arrivent quand l'application est ouverte ou en arriere-plan. Sur
+        iPhone, installe d'abord l'appli sur l'ecran d'accueil.
+      - Sans connexion, l'ecran se charge quand meme, mais les donnees
+        demandent internet.
+
+   C. Mettre a jour la version web
+      Quand une nouvelle version sort, re-televerse les fichiers du
+      nouveau dayan3d-web.zip sur GitHub de la meme facon (ils
+      remplacent les anciens). Les appareils prennent la nouvelle version
+      au prochain lancement.
+
+   D. Securite
+      Le depot est public, donc la page l'est aussi, mais il faut un
+      compte de l'equipe pour voir les donnees. Garde "Allow new users to
+      sign up" desactive dans Supabase.
+
+
+14) NOUVEAUTES DE LA VERSION 2.1.0 : ECHECS, ENTRETIEN, CORBEILLE
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run).
+   b. Echecs d'impression : dans une impression, l'etat "Echec" avec la
+      cause (decollement du plateau, bourrage, filament, coupure...).
+      Les matieres notees sur l'impression sont alors comptees comme
+      perdues : le stock baisse. Sur la frise, l'impression apparait
+      hachuree en rouge. Dans Statistiques : taux de reussite, matiere
+      perdue (grammes et francs) et causes les plus frequentes.
+      Les heures d'un echec comptent dans l'occupation des machines.
+   c. Entretien selon les heures : dans l'onglet Machines, "+ Entretien"
+      (ex. graisser les axes tous les 200 h, changer la buse tous les
+      100 h). L'appli additionne les heures d'impression de la machine
+      depuis le dernier entretien et affiche une barre de progression.
+      A 100 %, l'entretien est "a faire" : pastille rouge sur Machines,
+      bloc sur la page Aujourd'hui et rappel Windows le matin. Le bouton
+      "Fait" remet le compteur a zero.
+   d. Corbeille : un element supprime (commande, tache, impression,
+      client, modele) va a la corbeille pendant 30 jours au lieu de
+      disparaitre. Onglet "Corbeille" : "Restaurer" le remet avec ses
+      matieres, commentaires, photos et fichiers ; "Supprimer" l'efface
+      pour de bon. Apres 30 jours, c'est vide automatiquement.
+   e. Publication : version reglee sur 2.1.0. Lance
+      Creer-installateur.bat, cree une NOUVELLE release v2.1.0 sur
+      GitHub avec les 3 fichiers du dossier dist. Pour la version web
+      (tablette, telephone), re-televerse le contenu de dayan3d-web.zip
+      sur GitHub (il remplace l'ancien).
+
+
+15) NOUVEAUTES DE LA VERSION 2.2.0 : BOBINES ET PLANIFICATION AUTOMATIQUE
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run).
+   b. Bobines individuelles : onglet Stock, bouton "+ Bobine" (matiere,
+      nom ou numero, poids neuf, reste, machine). Le panneau "Bobines"
+      montre les bobines chargees dans une machine, celles en reserve et
+      les terminees, avec une barre de reste. "Charger" / "Decharger"
+      change la machine d'un clic.
+      - Quand une impression passe a "Terminee" (ou "Echec"), le stock de
+        la matiere baisse ET la bobine chargee dans la machine de
+        l'impression baisse aussi. Si tu annules, la bonne bobine est
+        rendue, meme si elle a change de machine entre-temps.
+      - Une machine sans bobine chargee : seul le stock de la matiere
+        baisse. Dans une impression, l'appli indique la bobine utilisee,
+        son reste avant et apres, et te previent si elle ne suffit pas.
+      - Une bobine qui arrive a 0 passe en "Terminee" et se decharge.
+      - Alerte : en dessous du seuil (100 g par defaut) : pastille sur
+        Stock, bloc "Bobines chargees" sur la page Aujourd'hui et rappel
+        Windows le matin.
+      - Etiquette QR de bobine (bouton "Etiquette QR" dans la fiche) :
+        scannee, elle ouvre la bobine.
+      - Le "reste" est celui de la bobine. Le stock de la matiere compte
+        toujours tout ce que tu possedes (bobines chargees comprises).
+   c. Planification automatique : bouton "Planifier" dans Machines, ou
+      "Planifier les impressions" dans une commande. Indique les pieces
+      (nom, duree en heures, nombre d'exemplaires, machine imposee ou non,
+      ou pars d'un modele). "Proposer un planning" place chaque piece sur
+      la machine qui la termine le plus tot, sans toucher aux impressions
+      ni aux blocages existants, et dit si l'echeance de la commande est
+      tenue. Tu choisis les heures de demarrage (8 h a 20 h par defaut) et
+      si les week-ends comptent : une impression peut tourner la nuit.
+      "Creer les impressions" les ajoute (a l'etat Planifiee, avec les
+      matieres du modele).
+   d. Publication : version reglee sur 2.2.0. Lance
+      Creer-installateur.bat, cree une NOUVELLE release v2.2.0 sur
+      GitHub avec les 3 fichiers du dossier dist. Pour la version web,
+      re-televerse le contenu de dayan3d-web.zip sur GitHub.
+
+
+16) NOUVEAUTES DE LA VERSION 2.4.0 : ATELIER, BENEVOLAT, IMPRIMANTES
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run).
+
+   b. Affichage atelier : onglet "Affichage atelier" puis "Plein ecran".
+      Pour un ecran fixe (tablette ou television) : etat de chaque
+      machine avec barre de progression, travail en cours et suivant,
+      horloge, taches et commandes a rendre, alertes (erreur
+      d'impression, stock ou bobine bas, entretien) et equipe du jour.
+      Il se met a jour tout seul et garde l'ecran allume. "Echap" ou le
+      bouton en haut a droite quitte le plein ecran.
+      Sur une tablette : ouvre l'adresse de la version web suivie de
+      #atelier (ex. https://.../#atelier) : l'ecran s'ouvre directement
+      en mode atelier apres la connexion.
+
+   c. Heures de benevolat : onglet "Benevolat", bouton "+ Heures"
+      (membre, date, heures, activite, note). Le membre est un simple
+      nom : il n'a pas besoin de compte. Les noms deja utilises sont
+      proposes ; "lea" et "Lea" sont regroupes. Totaux par membre et par
+      activite, moyenne, plus actif ; periode au choix (ce mois,
+      3 mois, cette annee). Tes propres heures sont en blanc.
+
+   d. Imprimantes en direct (application Windows uniquement)
+      Principe : UN ordinateur de l'atelier (celui qui reste allume)
+      lit les imprimantes du reseau local et partage leur etat avec
+      toute l'equipe via la base. Les autres appareils (autres PC,
+      tablettes, la television) n'ont rien a configurer et voient
+      l'etat en direct. Rien n'est jamais envoye aux imprimantes : c'est
+      de la lecture seule.
+      1. Sur cet ordinateur : Reglages > "Imprimantes (etat en direct)".
+      2. Coche "Cet ordinateur relaie l'etat des imprimantes".
+      3. Pour chaque machine, choisis le type et l'adresse IP :
+         - Creality K1 et Elegoo Neptune 4 : "Klipper / Moonraker",
+           adresse IP de l'imprimante, port 7125 (laisse vide).
+         - Bambu Lab : "Bambu Lab (reseau local)", adresse IP, numero de
+           serie et code d'acces. Il faut activer le mode "reseau local"
+           (LAN) dans les reglages de l'imprimante ; le code d'acces et
+           le numero de serie s'y trouvent aussi.
+      4. "Tester" pour chaque machine : le resultat s'affiche a cote.
+      5. "Enregistrer les imprimantes".
+      Resultat : progression, temps restant, temperatures et nom du
+      fichier sur la page Aujourd'hui, la frise des machines (pastilles)
+      et l'affichage atelier. Rappel Windows quand une impression se
+      termine ou signale une erreur (option dans Reglages).
+      "Mettre a jour les impressions automatiquement" : une impression
+      planifiee passe a "En impression" quand l'imprimante demarre (avec
+      l'heure reelle et le temps restant), puis a "Terminee" a la fin
+      (le stock et la bobine baissent alors comme d'habitude). Une
+      erreur n'est jamais classee en echec toute seule : c'est a toi
+      d'indiquer la cause.
+      Limites : l'ordinateur relais doit rester allume, avec l'appli
+      ouverte (elle peut rester pres de l'horloge) et sur le meme reseau
+      que les imprimantes. Si l'etat n'a pas ete mis a jour depuis plus
+      de 2 minutes 30, la machine est indiquee "hors ligne". Le code
+      d'acces Bambu reste enregistre sur cet ordinateur seulement.
+
+   e. Publication : version reglee sur 2.4.0. Lance
+      Creer-installateur.bat (il telecharge un composant de plus pour
+      les imprimantes : garde la connexion internet), puis cree une
+      NOUVELLE release v2.4.0 sur GitHub avec les 3 fichiers du dossier
+      dist. Pour la version web, re-televerse le contenu de
+      dayan3d-web.zip sur GitHub.
+
+
+17) VERSION 2.4.1 : RECHERCHE DES IMPRIMANTES SUR LE WI-FI
+   Dans Reglages > "Imprimantes (etat en direct)", le bouton "Chercher les
+   imprimantes sur le Wi-Fi" trouve les imprimantes du reseau de l'atelier
+   (Wi-Fi ou cable) sans que tu cherches leur adresse IP.
+   - Bambu Lab : elles s'annoncent sur le reseau. L'appli recupere
+     l'adresse IP, le numero de serie, le nom et le modele (X1, P1, A1,
+     H2D...). Il reste a saisir le code d'acces de l'imprimante.
+   - Creality K1, Elegoo Neptune 4 et autres imprimantes Klipper : l'appli
+     teste les adresses du reseau de l'ordinateur et repere celles qui
+     repondent comme une imprimante (ports 7125 et 4408).
+   - Chaque imprimante trouvee est proposee pour la bonne machine ; un
+     clic sur "Utiliser" remplit la ligne. Puis "Tester" et
+     "Enregistrer les imprimantes".
+   - La recherche dure une dizaine de secondes. Elle ne regarde que les
+     adresses privees de l'ordinateur (192.168.x.x, 10.x.x.x...) et ne
+     modifie rien sur les imprimantes.
+   - Si rien n'est trouve : verifie que l'ordinateur et les imprimantes
+     sont sur le MEME Wi-Fi (pas le reseau invite) et que l'option
+     "isolation des appareils" de la box est desactivee. Pour une Bambu,
+     le mode "reseau local" doit etre active. Tu peux toujours saisir
+     l'adresse a la main.
+   - Conseil : dans ta box, reserve une adresse IP fixe pour chaque
+     imprimante (reservation DHCP), pour qu'elle ne change pas.
+   - Publication : version reglee sur 2.4.1 ; meme procedure que la 2.4.0
+     (Creer-installateur.bat puis release v2.4.1 sur GitHub).
+
+
+18) VERSION 2.4.2 : CORRECTION URGENTE (ECRAN VIDE)
+   La version 2.4.1 contenait par erreur un fichier de configuration
+   (config.js) vide : l'application s'ouvrait avec un ecran vide.
+   La 2.4.2 corrige cela. Les versions 2.4.0 et anterieures n'etaient pas
+   concernees. Tes donnees n'ont jamais ete touchees (elles sont dans
+   Supabase).
+   - Si tu as installe la 2.4.1 : installe la 2.4.2 (Creer-installateur.bat
+     puis le .exe), ou publie la release v2.4.2 sur GitHub : l'appli
+     cassee la telechargera et s'installera a sa fermeture.
+   - Si la release v2.4.1 est publiee sur GitHub, remplace-la par la
+     v2.4.2 (ou supprime-la) pour que les autres ordinateurs ne
+     recoivent pas la version cassee.
+   - Version web : re-televerse le contenu de dayan3d-web.zip sur GitHub.
+   - Si un fichier manque un jour, l'appli affiche maintenant un message
+     d'erreur clair (avec un bouton "Copier le message") au lieu d'un
+     ecran vide.
+
+
+19) VERSION 2.5.0 : AIDE INTEGREE ET VISITE GUIDEE
+   a. Page "Aide" (dernier onglet du menu) : plus de 25 articles classes
+      en 8 rubriques (premiers pas, commandes et clients, machines et
+      impressions, stock, equipe, atelier et imprimantes, reglages,
+      depannage). Une recherche filtre les articles (les accents sont
+      ignores). Le coin "Depannage" repond aux questions courantes :
+      ecran vide, base non initialisee, imprimante hors ligne, rappels
+      absents, donnees qui ne se mettent pas a jour.
+   b. Bouton "?" en haut a droite de chaque page (ou touche F1) : l'aide
+      de la page, dans une fenetre, avec un lien "Toute l'aide".
+   c. Visite guidee en 13 etapes : l'appli entoure les vrais boutons et
+      explique chaque page (menu, recherche, Aujourd'hui, commandes,
+      machines, stock, taches, benevolat, atelier, reglages, aide).
+      Fleches gauche/droite ou Entree pour avancer, Echap pour quitter.
+      Elle fonctionne aussi sur telephone et tablette.
+   d. A la premiere connexion sur un appareil, l'appli PROPOSE la visite
+      guidee (jamais imposee) : "Commencer", "Plus tard" ou "Ne plus
+      proposer". Pour la revoir : page Aide > "Lancer la visite guidee",
+      ou Reglages > "Revoir la visite guidee".
+   e. Aucun changement dans Supabase : pas besoin de relancer le script
+      SQL. Publication : Creer-installateur.bat puis release v2.5.0 sur
+      GitHub ; pour la version web, re-televerse dayan3d-web.zip.
+
+
+20) VERSION 2.6.0 : EXPORT DES CLIENTS VERS LA FACTURATION
+   Le planning et la facturation ont chacun leur propre base Supabase :
+   ils ne partagent pas leurs donnees. Cette version prepare tes clients
+   (nom, e-mail, telephone, adresse, NPA, localite) au format de la table
+   "clients" de la facturation, sans rien modifier dans la facturation.
+   a. Page Clients > bouton "Exporter vers la facturation".
+   b. Option "Seulement les clients qui ont un e-mail ou un telephone".
+   c. Methode 1 (recommandee) : "Copier le script SQL". Ouvre le projet
+      Supabase de la FACTURATION (pas celui du planning) > SQL Editor >
+      New query > colle > Run.
+      - Un client deja present dans la facturation (meme e-mail ou meme
+        nom, majuscules ignorees) n'est pas duplique : le script peut
+        etre relance sans danger.
+   d. Methode 2 : "Telecharger le fichier CSV", puis dans Supabase de la
+      facturation : Table Editor > clients > Insert > Import data from CSV.
+   e. Les doublons dans le planning (meme nom ou meme e-mail) sont
+      regroupes en une seule fiche, la plus complete, completee avec les
+      informations des autres. L'adresse est decoupee en rue, NPA et
+      localite quand c'est possible (ex. "Rue du Pont 8, 2400 Le Locle").
+   f. Aucun changement dans Supabase du planning : pas de script SQL a
+      relancer. Publication : Creer-installateur.bat puis release v2.6.0
+      sur GitHub ; pour la version web, re-televerse dayan3d-web.zip.
+
+
+21) VERSION 2.7.0 : ENVOI DIRECT DES CLIENTS VERS LA FACTURATION
+   Page Clients > bouton "Envoyer vers la facturation".
+   a. La premiere fois, connecte-toi avec ton compte de l'application de
+      facturation (meme e-mail, meme mot de passe). Le mot de passe n'est
+      PAS enregistre ; seule la session reste ouverte sur l'appareil, et
+      le bouton "Se deconnecter" (dans la fenetre) la ferme. Les fois
+      suivantes, pas de nouveau mot de passe.
+   b. L'appli lit les clients deja presents dans la facturation et
+      affiche ce qui va se passer : "3 nouveaux clients a creer,
+      2 deja presents dont 2 a completer".
+   c. "Envoyer 3 clients" les cree dans la facturation, tout de suite
+      visibles dans l'application de facturation.
+   d. Rien n'est jamais ecrase ni duplique : un client est reconnu par
+      son e-mail ou son nom (majuscules ignorees). Pour un client deja
+      present, l'option "Completer les clients deja presents" ajoute
+      seulement ce qui manque (e-mail, telephone, adresse, notes). Un
+      client present dans la facturation mais absent du planning n'est
+      jamais modifie.
+   e. Ton compte de facturation doit avoir le droit de creer des clients
+      (c'est le cas des collaborateurs). Sinon, un message clair
+      l'indique et rien n'est cree.
+   f. Les autres methodes (script SQL, fichier CSV) restent disponibles
+      dans la meme fenetre, sous "Autres methodes".
+   g. Le projet de la facturation est renseigne dans config.js
+      (BILLING_URL et BILLING_KEY : adresse et cle PUBLIQUE, faites pour
+      etre dans l'application). Si tu changes un jour de projet Supabase
+      pour la facturation, il faudra modifier ces deux lignes.
+   h. Aucun changement dans Supabase du planning ni de la facturation :
+      pas de script SQL a relancer. Publication : Creer-installateur.bat
+      puis release v2.7.0 sur GitHub ; pour la version web, re-televerse
+      dayan3d-web.zip.
+
+
+22) VERSION 2.8.0 : GESTIONNAIRE DE FILAMENTS
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase
+      (SQL Editor > New query > Run). Il ajoute des colonnes aux matieres
+      et aux bobines ; il peut etre relance sans danger.
+   b. Nouvel onglet "Filaments" (apres Stock) avec deux vues :
+      - Bobines : une carte par bobine avec la pastille de couleur, la
+        marque, la matiere, ce qu'il reste, le prix au kilo, l'emplacement,
+        les dates d'ouverture et de sechage. En haut : nombre de bobines,
+        filament restant (kg), valeur du stock (CHF), bobines a surveiller.
+        Filtres : en service, chargees, en reserve, bientot vides, a secher,
+        terminees ; par matiere (PLA, PETG...) ; recherche par marque,
+        couleur ou emplacement.
+      - Catalogue : les references de filament, groupees par matiere, avec
+        diametre, temperatures, prix au kilo, stock et nombre de bobines.
+   c. "+ Filament" cree une reference : marque, matiere (PLA, PETG, ABS,
+      ASA, TPU, PA, PC, PVA), couleur (nom et teinte), diametre,
+      temperatures de buse et de plateau, sechage conseille, prix.
+      Les temperatures se proposent selon la matiere ; ce sont des valeurs
+      INDICATIVES (la notice du fabricant fait foi) et ce que tu saisis
+      n'est jamais ecrase. Tes anciennes matieres restent : elles sont
+      rangees sous "A completer" et se completent d'un clic, sans changer
+      ni leur nom ni leur stock.
+   d. "+ Bobine" enregistre une bobine physique : poids neuf et reste,
+      poids de la bobine vide, prix paye, date d'achat, fournisseur,
+      emplacement (etagere, boite), ouverture, dernier sechage, "stockee au
+      sec". Case "Ajouter aussi cette bobine au stock de la matiere" : a
+      cocher seulement si l'achat n'est pas encore compte dans le stock
+      (sinon il serait compte deux fois). Elle est decochee par defaut.
+   e. "Peser" : pose la bobine sur une balance, saisis le poids ; l'appli
+      retire le poids de la bobine vide (a indiquer une fois : carton
+      environ 140 g, plastique environ 250 g) et corrige le reste. Le stock
+      de la matiere suit. Tu peux aussi saisir directement le reste. Un
+      reste a 0 marque la bobine comme terminee.
+   f. "Sechee" note le sechage du jour. Un filament qui craint l'humidite
+      (PETG, TPU, PA, PC, PVA) ouvert depuis plus de 30 jours sans sechage
+      recent affiche "A secher ?" (et une alerte sur l'affichage atelier),
+      sauf s'il est "stocke au sec". C'est un rappel de bon sens, pas une
+      mesure : l'humidite reelle depend de ton stockage.
+   g. Charger une bobine dans une machine la marque "ouverte aujourd'hui"
+      si elle n'avait pas de date d'ouverture.
+   h. La fiche d'une bobine (clic sur son nom) montre tout, dont
+      l'historique de ses mouvements (utilisations, achats, pesees), avec
+      Peser, Sechee, Charger, Etiquette QR et Modifier. La recherche
+      Ctrl+K retrouve aussi les bobines. Aide : article "Le gestionnaire
+      de filaments" (touche F1 sur la page Filaments). La visite guidee
+      passe a 14 etapes.
+   i. Publication : Creer-installateur.bat puis release v2.8.0 sur GitHub ;
+      pour la version web, re-televerse dayan3d-web.zip.
+
+
+23) VERSION 2.9.0 : QR LISIBLES PAR UN TELEPHONE
+   Avant : le QR ne contenait que le texte "D3D:C:abcdef12" ; l'appareil
+   photo d'un telephone n'affichait que ce texte. Maintenant le QR contient
+   l'adresse de la version web + le code, par exemple :
+   https://daniel151187.github.io/dayan3d-planning-mises-a-jour/#D3D:C:abcdef12
+   a. Scanne l'etiquette avec l'APPAREIL PHOTO du telephone (iPhone ou
+      Android, rien a installer) : la commande, la bobine ou la matiere
+      s'ouvre dans l'appli web. La premiere fois, connecte-toi avec ton
+      compte d'equipe ; ensuite la session reste ouverte.
+      Sur iPhone, l'appareil photo ouvre Safari : la session de Safari est
+      separee de l'appli installee sur l'ecran d'accueil, donc la premiere
+      connexion se refait une fois dans Safari.
+   b. Une commande s'ouvre dans sa fiche (statut, photos, commentaires).
+      Une bobine s'ouvre dans sa fiche (reste, emplacement, historique,
+      Peser, Sechee, Charger). Un code inconnu (element supprime)
+      affiche "Code introuvable".
+   c. IL FAUT que la version web soit en ligne a l'adresse WEB_URL de
+      config.js (par defaut celle ci-dessus). Teste-le : ouvre cette
+      adresse dans le navigateur du telephone. Si elle n'existe pas, le
+      scan menera a une page d'erreur : re-televerse alors le contenu de
+      dayan3d-web.zip sur GitHub (Pages). Si ton adresse est differente,
+      modifie WEB_URL dans config.js.
+   d. Les etiquettes imprimees AVANT cette version ne contiennent que le
+      code : elles marchent toujours avec un lecteur USB ou Ctrl + K,
+      mais pas avec l'appareil photo d'un telephone. Reimprime-les
+      (bouton "Etiquette QR" dans la commande, la matiere ou la bobine).
+   e. Le lecteur de codes USB et Ctrl + K continuent de fonctionner, y
+      compris avec les nouvelles etiquettes (le lecteur "tape" l'adresse
+      complete : l'appli la reconnait).
+   f. Securite : le QR ne contient aucune donnee, seulement l'adresse de
+      l'appli et un code court. Sans compte d'equipe, la personne qui le
+      scanne ne voit que l'ecran de connexion.
+   g. Lisibilite verifiee avec un vrai decodeur de QR sur les 4 formats
+      (62x29, 50x30, 70x40, A4) : le QR est un peu plus dense qu'avant
+      (37 x 37 carres au lieu de 25 x 25) mais reste lisible avec une
+      grande marge (0,6 mm par carre sur le plus petit format).
+   h. Aucun changement dans Supabase : pas de script SQL a relancer.
+      Publication : Creer-installateur.bat puis release v2.9.0 sur GitHub ;
+      pour la version web, re-televerse dayan3d-web.zip.
+
+
+24) PUBLICATION AUTOMATIQUE (A PARTIR DE LA VERSION 2.9.0)
+   Fini Creer-installateur.bat et les releases a la main. Tu deposes la
+   nouvelle version sur GitHub ; GitHub fait le reste :
+     1. il VERIFIE les fichiers (il refuse un paquet abime : fichier
+        vide, configuration illisible, script invalide) ;
+     2. il FABRIQUE l'installateur Windows et PUBLIE la release : les
+        applis Windows deja installees la telechargent toutes seules ;
+     3. il met la VERSION WEB en ligne (telephone, tablette).
+   Duree : environ 5 a 10 minutes apres l'envoi des fichiers.
+
+   A. Reglage a faire UNE SEULE FOIS
+      1. Depot GitHub dayan3d-planning-mises-a-jour > Settings > Pages >
+         "Build and deployment" > Source : choisis "GitHub Actions".
+         (Ce n'est plus "Deploy from a branch" : la publication
+         automatique remplace l'envoi manuel de la version web.)
+      2. Decompresse dayan3d-planning.zip. Glisse le DOSSIER "app" (le
+         dossier lui-meme, pas son contenu) dans la page d'envoi
+         https://github.com/Daniel151187/dayan3d-planning-mises-a-jour/upload/main
+         puis "Commit changes".
+      3. Cree la recette de publication : Add file > Create new file.
+         Dans le nom du fichier, tape exactement :
+             .github/workflows/publier.yml
+         (en tapant les "/", GitHub cree les dossiers). Ouvre le fichier
+         publier.yml fourni avec le Bloc-notes, copie TOUT son contenu et
+         colle-le dans la grande zone de texte. Clique sur "Commit
+         changes", puis encore "Commit changes".
+      4. Onglet "Actions" > "Publier une nouvelle version" (a gauche) >
+         bouton "Run workflow" > "Run workflow". (Cette premiere fois,
+         il faut le lancer a la main car la recette vient d'etre creee.)
+      5. Attends : 3 etapes. Quand les 3 sont vertes (coche verte), c'est
+         publie : la release apparait dans "Releases" et la version web en
+         ligne (l'adresse est affichee dans l'etape 3).
+      6. Facultatif : supprime du depot les anciens fichiers de la version
+         web a la racine (index.html, app.js, fonts, img...). Ils ne
+         servent plus.
+
+   B. A chaque nouvelle version (le geste habituel)
+      1. Decompresse le nouveau dayan3d-planning.zip.
+      2. Glisse le dossier "app" dans la page d'envoi
+         https://github.com/Daniel151187/dayan3d-planning-mises-a-jour/upload/main
+         puis "Commit changes".
+      3. C'est tout : l'onglet Actions montre la progression. Les fichiers
+         identiques sont simplement ignores.
+      L'installateur Windows n'est refait que si le numero de version
+      (package.json) a change. La version web, elle, est remise a jour a
+      chaque envoi.
+
+   C. Si quelque chose echoue
+      - Onglet "Actions" : une croix rouge indique l'etape en echec.
+        Clique dessus, copie le message d'erreur et envoie-le moi.
+      - "Get Pages site failed" : le reglage A1 n'est pas fait.
+      - Etape 1 rouge ("PROBLEME(S)") : le paquet depose est abime (ex.
+        fichier vide). Re-deposer le dossier app complet.
+      - Un avertissement jaune sur les versions des outils GitHub est
+        sans consequence.
+      - En secours, l'ancienne methode (Creer-installateur.bat, release a
+        la main) fonctionne toujours.
+
+   D. Ce qui reste a la main
+      Le script supabase-schema.sql : quand une version l'exige (je te le
+      signale), il faut le relancer dans Supabase (SQL Editor > Run).
