@@ -1,6 +1,6 @@
 // Mode hors ligne et notifications de l'application web (tablette et téléphone).
 // Réseau d'abord : une nouvelle version publiée est prise tout de suite ; la copie sert si la connexion tombe.
-const CACHE = 'dayan3d-planning-v2.9.0';
+const CACHE = 'dayan3d-planning-v2.11.0';
 const SHELL = [
   './',
   'index.html',

@@ -1,0 +1,53 @@
+{
+  "name": "dayan3d-planning",
+  "version": "2.11.0",
+  "description": "Planning collaboratif Dayan 3D",
+  "main": "main.js",
+  "author": "Dayan 3D",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "ch.dayan3d.planning",
+    "productName": "Dayan 3D Planning",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "printers.js",
+      "updates.json",
+      "renderer/**/*",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Dayan 3D Planning",
+      "artifactName": "Dayan3D-Planning-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/Daniel151187/dayan3d-planning-mises-a-jour/releases/latest/download/"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3",
+    "mqtt": "^5.16.1"
+  }
+}

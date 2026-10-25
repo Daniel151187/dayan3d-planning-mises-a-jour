@@ -50,7 +50,7 @@
     started: false,
     me: null,
     profiles: [], machines: [], orders: [], prints: [], tasks: [], availability: [], attachments: [], history: [],
-    materials: [], material_uses: [], stock_moves: [], comments: [], comment_reads: [], machine_blocks: [], clients: [], print_templates: [], maintenance_rules: [], trash: [], spools: [], volunteer_hours: [], printer_status: [], volRange: 'month', filTab: 'spools', filFilter: 'all', filType: '', filQuery: '', helpQuery: '', helpOpen: '', statsRange: 30, orderFilter: { urgent: false, tag: '' }, openOrderId: null,
+    materials: [], material_uses: [], stock_moves: [], comments: [], comment_reads: [], machine_blocks: [], clients: [], print_templates: [], maintenance_rules: [], trash: [], spools: [], volunteer_hours: [], printer_status: [], app_settings: [], library_files: [], libType: 'all', libTag: '', libQuery: '', libBusy: null, volRange: 'month', filTab: 'spools', filFilter: 'all', filType: '', filQuery: '', helpQuery: '', helpOpen: '', statsRange: 30, orderFilter: { urgent: false, tag: '' }, openOrderId: null,
     view: 'today',
     calMode: 'month',
     cursor: startOfDay(new Date()),
@@ -61,7 +61,7 @@
     modalRefresh: null
   };
 
-  const TABLES = ['profiles', 'machines', 'orders', 'prints', 'tasks', 'availability', 'attachments', 'history', 'materials', 'material_uses', 'stock_moves', 'comments', 'comment_reads', 'machine_blocks', 'clients', 'print_templates', 'maintenance_rules', 'trash', 'spools', 'volunteer_hours', 'printer_status'];
+  const TABLES = ['profiles', 'machines', 'orders', 'prints', 'tasks', 'availability', 'attachments', 'history', 'materials', 'material_uses', 'stock_moves', 'comments', 'comment_reads', 'machine_blocks', 'clients', 'print_templates', 'maintenance_rules', 'trash', 'spools', 'volunteer_hours', 'printer_status', 'app_settings', 'library_files'];
 
   const profileName = (id) => state.profiles.find((p) => p.id === id)?.name || 'Quelqu’un';
   const machineName = (id) => state.machines.find((m) => m.id === id)?.name || 'Sans machine';
@@ -264,6 +264,45 @@
     return ms > 0 ? `${h} h${m ? ` ${pad(m)}` : ''}` : '';
   }
 
+  /* ---------- Rentabilité : matière + temps machine + main-d'œuvre ---------- */
+  const settingNum = (k, d) => { const r = state.app_settings.find((x) => x.key === k); const n = r ? Number(r.value) : NaN; return Number.isFinite(n) ? n : d; };
+  const tariffs = () => ({
+    labor: Math.max(0, settingNum('labor_rate', 0)),
+    margin: Math.min(90, Math.max(0, settingNum('target_margin', 40))),
+    round: settingNum('round_to', 1) > 0 ? settingNum('round_to', 1) : 1
+  });
+  const roundUp = (x, step) => Math.round(Math.ceil(x / step - 1e-9) * step * 100) / 100;
+  // temps de machine d'une commande (toutes ses impressions) au tarif horaire de chaque machine
+  function machineCost(orderId) {
+    const missing = new Set();
+    let cost = 0;
+    let hours = 0;
+    let estimated = false;
+    state.prints.filter((p) => p.order_id === orderId).forEach((p) => {
+      const h = Math.max(0, (new Date(p.end_at) - new Date(p.start_at)) / 36e5);
+      hours += h;
+      if (p.status === 'planned' || p.status === 'printing') estimated = true;
+      const m = state.machines.find((x) => x.id === p.machine_id);
+      if (m && m.hourly_rate != null) cost += h * Number(m.hourly_rate); else if (m) missing.add(m.name);
+    });
+    return { cost, hours, estimated, missing: [...missing] };
+  }
+  // le vrai coût d'une commande, sa marge et le prix qui donnerait la marge souhaitée
+  function orderProfit(orderId, extraRows, priceVal, laborH) {
+    const mat = orderCost(orderId, extraRows);
+    const mc = machineCost(orderId);
+    const t = tariffs();
+    const lh = Number(laborH) > 0 ? Number(laborH) : 0;
+    const laborCost = lh * t.labor;
+    const cost = mat.total + mc.cost + laborCost;
+    const price = priceVal == null || priceVal === '' || Number.isNaN(Number(priceVal)) ? null : Number(priceVal);
+    const margin = price == null ? null : price - cost;
+    const pct = price != null && price > 0 ? (margin / price) * 100 : null;
+    const suggested = cost > 0 ? roundUp(cost / (1 - t.margin / 100), t.round) : null;
+    return { mat, mc, laborH: lh, laborCost, cost, price, margin, pct, suggested, target: t.margin, laborRateMissing: lh > 0 && t.labor === 0 };
+  }
+  const marginClass = (pct, target) => (pct < 0 ? 'bad' : pct < target ? 'warn' : 'good');
+
   async function loadTable(t) {
     let q = sb.from(t).select('*');
     if (t === 'history') q = q.order('at', { ascending: false }).limit(200);
@@ -393,6 +432,7 @@
     history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     stats: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
+    library: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13l3 1.5L15 13M12 14.5V18"/>',
     filaments: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/>',
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.1 1-1.1 1.8M12 17h.01"/>',
     atelier: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
@@ -410,6 +450,7 @@
     ['clients', 'Clients'],
     ['stock', 'Stock'],
     ['filaments', 'Filaments'],
+    ['library', 'Fichiers 3D'],
     ['tasks', 'Tâches'],
     ['team', 'Équipe'],
     ['volunteers', 'Bénévolat'],
@@ -459,6 +500,7 @@
       html = `<h2>Machines</h2>${navBtns}<span class="hint">${fmtShort(a)} – ${fmtShort(b)} ${b.getFullYear()}</span>
         <span class="grow hint">Double-clic sur une machine pour planifier une impression</span>
         <button class="btn" type="button" data-act="plan">Planifier</button>
+        <button class="btn" type="button" data-act="tariffs">Tarifs</button>
         <button class="btn" type="button" data-act="newitem" data-kind="maintenance">+ Entretien</button>
         <button class="btn" type="button" data-act="newitem" data-kind="template">+ Modèle</button>
         <button class="btn" type="button" data-act="newitem" data-kind="block">+ Blocage</button>
@@ -489,7 +531,8 @@
       html = `<h2>Statistiques</h2>
         <div class="seg" role="group" aria-label="Période">
           ${[[30, '30 jours'], [90, '3 mois'], [365, '12 mois']].map(([d, l]) => `<button type="button" data-act="srange" data-r="${d}" aria-pressed="${state.statsRange === d}">${l}</button>`).join('')}
-        </div><span class="grow hint">Sur les commandes terminées et les impressions réalisées</span>`;
+        </div><span class="grow hint">Sur les commandes terminées et les impressions réalisées</span>
+        <button class="btn" type="button" data-act="tariffs">Tarifs</button>`;
     } else if (v === 'clients') {
       const orphans = orphanOrders().length;
       html = `<h2>Clients</h2><span class="grow hint">${state.clients.length} fiche${state.clients.length > 1 ? 's' : ''}</span>
@@ -505,6 +548,9 @@
           ${[['month', 'Ce mois'], ['quarter', '3 mois'], ['year', 'Cette année']].map(([k, l]) => `<button type="button" data-act="vrange" data-r="${k}" aria-pressed="${state.volRange === k}">${l}</button>`).join('')}
         </div><span class="grow hint">Heures données par chaque membre, avec ou sans compte</span>
         <button class="btn btn-primary" type="button" data-act="newitem" data-kind="volunteer">+ Heures</button>`;
+    } else if (v === 'library') {
+      html = `<h2>Fichiers 3D</h2><span class="grow hint">Bibliothèque partagée par toute l’équipe</span>
+        <button class="btn btn-primary" type="button" data-act="lib-pick">+ Fichiers</button>`;
     } else if (v === 'filaments') {
       html = `<h2>Filaments</h2>
         <div class="seg" role="group" aria-label="Affichage">${[['spools', 'Bobines'], ['catalog', 'Catalogue']].map(([k, l]) => `<button type="button" data-act="fil-tab" data-tab="${k}" aria-pressed="${state.filTab === k}">${l}</button>`).join('')}</div>
@@ -532,7 +578,7 @@
     const st = view.scrollTop;
     renderNav();
     renderTop();
-    const html = { filaments: filamentsHtml, help: helpHtml, atelier: atelierHtml, volunteers: volunteersHtml, trash: trashHtml, stats: statsHtml, today: todayHtml, calendar: calendarHtml, machines: machinesHtml, orders: ordersHtml, clients: clientsHtml, stock: stockHtml, tasks: tasksHtml, team: teamHtml, history: historyHtml }[state.view]();
+    const html = { library: libraryHtml, filaments: filamentsHtml, help: helpHtml, atelier: atelierHtml, volunteers: volunteersHtml, trash: trashHtml, stats: statsHtml, today: todayHtml, calendar: calendarHtml, machines: machinesHtml, orders: ordersHtml, clients: clientsHtml, stock: stockHtml, tasks: tasksHtml, team: teamHtml, history: historyHtml }[state.view]();
     view.innerHTML = html;
     view.scrollTop = st;
   }
@@ -807,6 +853,8 @@
           o.due_date ? `<span class="${late ? 'late' : ''}">Échéance ${esc(fmtShort(parseYmd(o.due_date)))}${late ? ' (en retard)' : ''}</span>` : '',
           o.price_chf != null ? `<span>${esc(fmtMoney(o.price_chf))}</span>` : '',
           cost.total > 0 ? `<span title="Coût de la matière utilisée">Matière ${esc(fmtMoney(cost.total))}</span>` : '',
+          (() => { const pf = Number(o.price_chf) > 0 ? orderProfit(o.id, null, o.price_chf, o.labor_h) : null; return pf && pf.cost > 0 && pf.pct != null ? `<span class="mg ${marginClass(pf.pct, pf.target)}" title="Marge après matière, temps de machine et main-d’œuvre">Marge ${esc(fmtNum(Math.round(pf.pct)))} %</span>` : ''; })(),
+          o.billing_invoice_number ? `<span title="Brouillon de facture créé dans la facturation">Facture ${esc(o.billing_invoice_number)}</span>` : '',
           prints ? `<span>${prints} impression${prints > 1 ? 's' : ''}</span>` : '',
           files ? `<span>${files} fichier${files > 1 ? 's' : ''}</span>` : '',
           photos ? `<span>${photos} photo${photos > 1 ? 's' : ''}</span>` : '',
@@ -870,6 +918,20 @@
         '- Si tes commandes ont déjà des noms de clients, le bouton **Créer les fiches depuis les commandes** crée les fiches et relie tout en une fois.',
         '- **Envoyer vers la facturation** : envoie tes clients (nom, e-mail, téléphone, adresse, NPA, localité) directement dans la base de l’application de facturation. Connecte-toi une fois avec ton compte de la facturation ; l’appli te montre ce qui sera créé, puis tu confirmes. Les clients déjà présents ne sont jamais dupliqués ni écrasés (leurs infos manquantes peuvent être complétées).',
         '- Autres méthodes dans la même fenêtre : script SQL à coller dans Supabase de la facturation, ou fichier CSV.'] },
+    { id: 'profit', g: 1, t: 'Rentabilité et prix conseillé', k: 'marge cout tarif horaire machine main oeuvre prix conseille devis rentable',
+      b: ['Chaque commande affiche son **vrai coût** : la matière utilisée, le temps de machine au tarif horaire de chaque machine, et la main-d’œuvre (le temps de préparation et de finition que tu indiques dans la commande).',
+        '- Bouton **Tarifs** (pages Machines et Statistiques) : le coût d’une heure de chaque machine, le tarif horaire de la main-d’œuvre, la marge souhaitée et l’arrondi du prix. Les tarifs sont partagés avec l’équipe.',
+        '- Dans une commande : coût total, marge en francs et en pourcentage du prix de vente, et **prix conseillé** pour atteindre ta marge souhaitée. « Utiliser ce prix » le recopie dans le champ Prix.',
+        '- Sur les cartes du tableau, la pastille **Marge** passe au vert (marge atteinte), à l’orange (en dessous de la marge souhaitée) ou au rouge (commande à perte).',
+        '- **Statistiques** : la marge totale de la période et les 5 commandes les moins rentables.',
+        'La marge se calcule sur le prix de vente (une commande à 100 francs avec 40 francs de marge = 40 %). Le temps de machine d’une impression planifiée est une estimation tant qu’elle n’est pas terminée.'] },
+    { id: 'invoice', g: 1, t: 'Créer un brouillon de facture dans la facturation', k: 'facture facturation brouillon commande envoyer client',
+      b: ['Dans une commande enregistrée, section **Facturation** : « Créer un brouillon de facture… ».',
+        '- La première fois, connecte-toi avec ton compte de l’appli de facturation (le mot de passe n’est pas enregistré).',
+        '- L’appli retrouve le client dans la facturation (par e-mail ou par nom) ou l’ajoute depuis sa fiche.',
+        '- Tu vois les lignes de la facture (objet de la commande et prix par défaut) et tu peux les modifier, en ajouter (frais de port…) ou ajouter une note.',
+        '- **Créer le brouillon** : la facture est créée dans la facturation, sans être finalisée ni envoyée. Tu la vérifies là-bas, tu choisis le mode de paiement, puis tu la finalises.',
+        '- Le numéro de facture s’affiche dans la commande et sur sa carte. Si une facture existe déjà, l’appli te prévient avant d’en créer une autre.'] },
     { id: 'comments', g: 1, t: 'Commentaires, photos et fichiers d’une commande', k: 'message equipe avant apres stl pastille nouveau',
       b: ['- **Commentaires** : écris un message à l’équipe en bas de la commande (Ctrl + Entrée pour envoyer). Une pastille rouge signale les nouveaux, et chacun a sa propre lecture.',
         '- **Photos avant / après** : « Ajouter » dans la zone Avant ou Après. Un clic sur une miniature l’agrandit. Les photos sont réduites automatiquement pour ne pas remplir le stockage.',
@@ -882,6 +944,15 @@
         '- Note les **matières utilisées** : le stock baisse quand l’impression passe à Terminée ou Échec.',
         '- **+ Blocage** réserve une machine (entretien, panne). Si une impression en chevauche une autre ou un blocage, l’appli te prévient et la frise l’entoure de rouge.',
         '- **+ Modèle** enregistre une pièce refaite souvent (machine, durée, matières) ; **Créer l’impression** la replanifie en un clic. Dans une impression existante : **Enregistrer comme modèle**.'] },
+    { id: 'library', g: 2, t: 'La bibliothèque de fichiers 3D', k: 'stl 3mf gcode fichier partager bibliotheque apercu 3d dimensions telecharger etiquette',
+      b: ['Page **Fichiers 3D** : tous les fichiers de l’équipe au même endroit, sans passer par une commande.',
+        '- **Ajouter** : glisse des fichiers dans le cadre (ordinateur) ou touche **+ Fichiers** (téléphone, tablette). STL, 3MF, G-code, STEP, OBJ, ZIP… jusqu’à 50 Mo par fichier. Un fichier déjà présent (même nom, même taille) est ignoré.',
+        '- Pour un **STL**, l’appli calcule les **dimensions** (largeur × profondeur × hauteur en mm), le **volume** et fabrique une **vignette**. Les dimensions supposent un STL en millimètres.',
+        '- **Un clic sur un fichier** ouvre sa fiche : aperçu 3D (glisse pour tourner, molette ou pincement pour zoomer), titre, **étiquettes**, notes (version, réglages), **commande liée**.',
+        '- **Télécharger** récupère le fichier d’origine. **Supprimer** l’enlève pour toute l’équipe, sans retour possible.',
+        '- Filtres par type et par étiquette, et recherche par nom, étiquette ou note. Ctrl + K retrouve aussi les fichiers.',
+        '- Un fichier lié à une commande apparaît dans la fiche de cette commande, section « Fichiers 3D de la bibliothèque ».',
+        'Les fichiers sont stockés dans ton Supabase (espace privé) : seuls les comptes de l’équipe y accèdent. L’offre gratuite de Supabase offre 1 Go de stockage au total.'] },
     { id: 'planner', g: 2, t: 'La planification automatique', k: 'planifier automatique echeance creneau machine',
       b: ['**Planifier** (page Machines) ou **Planifier les impressions** (dans une commande).',
         '- Indique chaque pièce : nom, durée en heures, nombre d’exemplaires, machine imposée ou non. Tu peux aussi partir d’un modèle.',
@@ -986,7 +1057,7 @@
         '- Sur un téléphone en veille, les données se rechargent quand tu rouvres l’appli.',
         '- En cas de doute, ferme et rouvre l’application.'] }
   ];
-  const HELP_BY_VIEW = { today: 'today', atelier: 'atelier', calendar: 'calendar', machines: 'machines', orders: 'orders', clients: 'clients', stock: 'stock', filaments: 'filaments', tasks: 'tasks', team: 'team', volunteers: 'volunteers', stats: 'stats', history: 'history_trash', trash: 'history_trash', help: 'start' };
+  const HELP_BY_VIEW = { today: 'today', atelier: 'atelier', calendar: 'calendar', machines: 'machines', orders: 'orders', clients: 'clients', stock: 'stock', filaments: 'filaments', library: 'library', tasks: 'tasks', team: 'team', volunteers: 'volunteers', stats: 'stats', history: 'history_trash', trash: 'history_trash', help: 'start' };
 
   const helpMd = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   function helpBody(lines) {
@@ -1329,6 +1400,13 @@
     const doneOrders = state.orders.filter((o) => o.status === 'done' && doneAt(o) >= start && doneAt(o) <= now);
     const revenue = doneOrders.reduce((s, o) => s + price(o), 0);
     const matCost = doneOrders.reduce((s, o) => s + orderCost(o.id).total, 0);
+    const profits = doneOrders.filter((o) => price(o) > 0).map((o) => ({ o, pf: orderProfit(o.id, null, o.price_chf, o.labor_h) }));
+    const profRevenue = profits.reduce((s, x) => s + price(x.o), 0);
+    const profCost = profits.reduce((s, x) => s + x.pf.cost, 0);
+    const profMargin = profRevenue - profCost;
+    const profPct = profRevenue > 0 ? (profMargin / profRevenue) * 100 : null;
+    const missingRates = profits.filter((x) => x.pf.mc.missing.length).length;
+    const lowest = profits.filter((x) => x.pf.cost > 0 && x.pf.pct != null).sort((x, y) => x.pf.pct - y.pf.pct).slice(0, 5);
     const delays = doneOrders.map((o) => (doneAt(o) - new Date(o.created_at)) / 864e5).filter((d) => d >= 0);
     const avgDelay = delays.length ? delays.reduce((x, y) => x + y, 0) / delays.length : null;
     const withDue = doneOrders.filter((o) => o.due_date);
@@ -1357,6 +1435,7 @@
       ${kpi('Commandes terminées', String(doneOrders.length), doneOrders.length ? '' : 'Aucune sur la période')}
       ${kpi('Chiffre d’affaires', esc(fmtMoney(revenue)), doneOrders.length ? `${doneOrders.filter((o) => o.price_chf != null).length} commande(s) avec un prix` : '')}
       ${kpi('Coût matière', esc(fmtMoney(matCost)), `Reste ${esc(fmtMoney(revenue - matCost))} après la matière`)}
+      ${kpi('Marge', profits.length ? esc(fmtMoney(profMargin)) : '–', profits.length ? `${profPct == null ? '' : `${esc(fmtNum(Math.round(profPct)))} % du chiffre d’affaires, `}après matière, machines et main-d’œuvre${missingRates ? `. Tarif de machine manquant sur ${missingRates} commande${missingRates > 1 ? 's' : ''}` : ''}` : 'Aucune commande terminée avec un prix')}
       ${kpi('Heures d’impression', esc(fmtH(totalH)), `${Math.round(avgOcc)} % d’occupation moyenne`)}
       ${kpi('Délai moyen', avgDelay == null ? '–' : `${esc(fmtNum(Math.round(avgDelay * 10) / 10))} jours`, 'De la création à la fin de la commande')}
       ${kpi('Taux de réussite', successRate == null ? '–' : `${successRate} %`, finished.length ? `${finished.length - failedP.length} impressions réussies sur ${finished.length}` : 'Aucune impression terminée')}
@@ -1417,6 +1496,8 @@
           ${failedP.length ? `<div class="tl-item static"><span class="ti-main">Matière perdue</span><span class="sub">${esc(fmtNum(Math.round(lostGrams)))} g${lostCost > 0 ? `, environ ${esc(fmtMoney(lostCost))}` : ''}</span></div>${topReasons.map(([k, n]) => `<div class="tl-item static"><span class="ti-main">${esc(k)}</span><span class="sub">${n} fois</span></div>`).join('')}` : '<div class="empty-day">Aucun échec sur la période</div>'}</section>
         <section class="panel"><header><h3>Meilleurs clients</h3><span class="count">${topClients.length}</span></header>
           ${list(topClients.map((c) => `<div class="tl-item static"><span class="ti-main">${esc(c.name)}</span><span class="sub">${c.n} commande${c.n > 1 ? 's' : ''}${c.total > 0 ? `, ${esc(fmtMoney(c.total))}` : ''}</span></div>`), 'Aucune commande terminée sur la période')}</section>
+        <section class="panel"><header><h3>Commandes les moins rentables</h3><span class="count">${lowest.length}</span></header>
+          ${list(lowest.map((x) => `<button type="button" class="tl-item" data-act="edit" data-kind="order" data-id="${x.o.id}"><span class="ti-main">${esc(x.o.client || x.o.title)}${x.o.client ? ` : ${esc(x.o.title)}` : ''}</span><span class="sub mg ${marginClass(x.pf.pct, x.pf.target)}">Marge ${esc(fmtNum(Math.round(x.pf.pct)))} %, ${esc(fmtMoney(x.pf.margin))} sur ${esc(fmtMoney(x.pf.price))}</span></button>`), 'Aucune commande terminée avec un prix et un coût sur la période')}</section>
         <section class="panel"><header><h3>Matières les plus utilisées</h3><span class="count">${topMats.length}</span></header>
           ${list(topMats.map((x) => `<div class="tl-item static"><span class="ti-main">${esc(x.m.name)}</span><span class="sub">${esc(fmtNum(x.qty))} ${esc(unitFor(x.m, x.qty))}${x.cost > 0 ? `, ${esc(fmtMoney(x.cost))}` : ''}</span></div>`), 'Aucune matière consommée sur la période')}</section>
       </div>`;
@@ -1768,6 +1849,647 @@
     const { data } = await bc.auth.getSession();
     if (data && data.session) { st.email = data.session.user.email || st.email; await loadExisting(); }
     else { st.phase = 'login'; paint(); }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Tarifs de l'atelier (rentabilité)                                  */
+  /* ------------------------------------------------------------------ */
+  function openTariffs() {
+    const t = tariffs();
+    const ROUNDS = [[0.05, '5 centimes'], [0.1, '10 centimes'], [0.5, '50 centimes'], [1, '1 franc'], [5, '5 francs']];
+    $('#layer-root').innerHTML = `
+      <div class="overlay layer" id="t-overlay">
+        <div class="modal tariffs" role="dialog" aria-modal="true" aria-label="Tarifs de l’atelier">
+          <div class="modal-head"><h3>Tarifs de l’atelier</h3><button type="button" class="btn btn-quiet icon-btn" data-tclose aria-label="Fermer">✕</button></div>
+          <div class="modal-body">
+            <p class="bx-intro">Ces tarifs servent à calculer le vrai coût de chaque commande (matière, temps de machine, main-d’œuvre) et le prix conseillé. Ils sont partagés avec toute l’équipe.</p>
+            <h4>Coût d’une heure de machine (CHF)</h4>
+            <small class="hint-line">Électricité, usure, amortissement. Pour une imprimante de bureau, on compte souvent 1 à 3 CHF de l’heure : à adapter à ta situation.</small>
+            ${state.machines.map((m) => `<label class="field t-row"><span>${esc(m.name)}</span><input type="number" step="0.05" min="0" inputmode="decimal" data-machine="${m.id}" value="${m.hourly_rate != null ? esc(m.hourly_rate) : ''}" placeholder="ex. 2.00"></label>`).join('')}
+            <h4>Main-d’œuvre</h4>
+            <label class="field t-row"><span>Tarif horaire (CHF par heure)</span><input id="t-labor" type="number" step="0.5" min="0" inputmode="decimal" value="${t.labor || ''}" placeholder="ex. 40"></label>
+            <h4>Prix conseillé</h4>
+            <label class="field t-row"><span>Marge souhaitée (% du prix de vente)</span><input id="t-margin" type="number" step="1" min="0" max="90" inputmode="decimal" value="${esc(t.margin)}"></label>
+            <label class="field t-row"><span>Arrondir le prix à</span><select id="t-round">${ROUNDS.map(([v, l]) => `<option value="${v}" ${t.round === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+            <div class="bx-plan" id="t-example"></div>
+            <p class="form-error" id="t-error" role="alert"></p>
+          </div>
+          <div class="modal-foot"><span class="grow"></span><button type="button" class="btn" data-tclose>Annuler</button><button type="button" class="btn btn-primary" id="t-save">Enregistrer les tarifs</button></div>
+        </div>
+      </div>`;
+    const close = () => { $('#layer-root').innerHTML = ''; };
+    const val = (id) => $(id).value;
+    const example = () => {
+      const m = Number(val('#t-margin'));
+      const step = Number(val('#t-round'));
+      if (!(m >= 0 && m < 100)) { $('#t-example').textContent = ''; return; }
+      const cost = 30;
+      $('#t-example').innerHTML = `Exemple : une commande qui te coûte <b>${esc(fmtMoney(cost))}</b> avec <b>${esc(fmtNum(m))} %</b> de marge se vend <b>${esc(fmtMoney(roundUp(cost / (1 - m / 100), step)))}</b>. La marge se calcule sur le prix de vente : elle ne peut pas atteindre 100 %.`;
+    };
+    $('#t-overlay').addEventListener('input', example);
+    $('#t-overlay').addEventListener('change', example);
+    example();
+    $('#t-overlay').querySelectorAll('[data-tclose]').forEach((b) => b.addEventListener('click', close));
+    $('#t-overlay').addEventListener('mousedown', (e) => { if (e.target.id === 't-overlay') close(); });
+    $('#t-save').addEventListener('click', async () => {
+      const err = $('#t-error');
+      err.textContent = '';
+      const rates = [...document.querySelectorAll('#t-overlay [data-machine]')].map((el) => ({ id: el.dataset.machine, v: el.value.trim() === '' ? null : Number(el.value) }));
+      const labor = val('#t-labor').trim() === '' ? 0 : Number(val('#t-labor'));
+      const margin = Number(val('#t-margin'));
+      const step = Number(val('#t-round'));
+      if (rates.some((r) => r.v != null && !(r.v >= 0)) || !(labor >= 0)) { err.textContent = 'Les tarifs doivent être des nombres positifs ou nuls.'; return; }
+      if (!(margin >= 0 && margin <= 90)) { err.textContent = 'La marge souhaitée doit être comprise entre 0 et 90 %.'; return; }
+      $('#t-save').disabled = true;
+      for (const r of rates) {
+        const m = state.machines.find((x) => x.id === r.id);
+        if (m && (m.hourly_rate == null ? null : Number(m.hourly_rate)) === r.v) continue;
+        const { error } = await sb.from('machines').update({ hourly_rate: r.v }).eq('id', r.id);
+        if (error) { err.textContent = `Enregistrement impossible : ${error.message}`; $('#t-save').disabled = false; return; }
+      }
+      for (const [key, value] of [['labor_rate', labor], ['target_margin', margin], ['round_to', step]]) {
+        const { error } = await sb.from('app_settings').upsert({ key, value }, { onConflict: 'key' });
+        if (error) { err.textContent = `Enregistrement impossible : ${error.message}`; $('#t-save').disabled = false; return; }
+      }
+      await Promise.all([loadTable('machines'), loadTable('app_settings')]);
+      close();
+      render();
+      toast('Tarifs enregistrés');
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Commande vers facture : brouillon dans la base de la facturation   */
+  /* ------------------------------------------------------------------ */
+  const INVOICE_STATUS_FR = { brouillon: 'brouillon', envoyee: 'envoyée', payee: 'payée', annulee: 'annulée' };
+  const findBillingClient = (row, existing) => {
+    const em = row.email ? String(row.email).toLowerCase() : null;
+    return (em && existing.find((e) => e.email && String(e.email).trim().toLowerCase() === em)) || existing.find((e) => norm(e.name) === norm(row.name)) || null;
+  };
+  // délai de paiement : celui des réglages de la facturation si on le trouve, sinon 30 jours (modifiable là-bas)
+  const billingDueDays = (co) => {
+    if (co) {
+      for (const k of Object.keys(co)) {
+        if (/(pay|due|echeance).*(day|jour|term|delai)|(day|jour|delai).*(pay|due|echeance)/i.test(k) && Number.isInteger(Number(co[k])) && Number(co[k]) > 0 && Number(co[k]) <= 365) return Number(co[k]);
+      }
+    }
+    return 30;
+  };
+
+  async function openInvoiceDraft(orderId) {
+    const o = state.orders.find((x) => x.id === orderId);
+    if (!o) return;
+    const bc = billingClient();
+    const crec = o.client_id ? clientById(o.client_id) : null;
+    const target = crec ? (billingExport([crec]).rows[0] || null)
+      : (o.client && o.client.trim() ? { name: o.client.trim(), contact: null, address: null, postal_code: null, city: null, country: 'Suisse', email: null, phone: null, notes: null } : null);
+    let savedEmail = '';
+    try { savedEmail = localStorage.getItem('dayan_billing_email') || ''; } catch (e) { /* ignoré */ }
+    const st = {
+      phase: 'init', email: savedEmail, existing: [], company: null, linked: null, match: null,
+      lines: [{ type: 'Objet 3D', description: o.title || '', qty: '1', price: o.price_chf != null ? String(o.price_chf) : '' }],
+      note: '', again: false, err: '', done: null
+    };
+    $('#layer-root').innerHTML = `
+      <div class="overlay layer" id="iv-overlay">
+        <div class="modal export invoice-draft" role="dialog" aria-modal="true" aria-label="Créer un brouillon de facture">
+          <div class="modal-head"><h3>Créer un brouillon de facture</h3><button type="button" class="btn btn-quiet icon-btn" data-ivclose aria-label="Fermer">✕</button></div>
+          <div class="modal-body" id="iv-body"></div>
+          <div class="modal-foot" id="iv-foot"></div>
+        </div>
+      </div>`;
+    const close = () => { $('#layer-root').innerHTML = ''; };
+    const lineTotal = (l) => Math.round((Number(l.qty) || 0) * (Number(l.price) || 0) * 100) / 100;
+    const total = () => st.lines.filter((l) => l.description.trim()).reduce((s, l) => s + lineTotal(l), 0);
+    const closeBtn = '<button type="button" class="btn" data-ivclose>Fermer</button>';
+
+    const paint = () => {
+      const body = $('#iv-body');
+      const foot = $('#iv-foot');
+      const head = `<div class="iv-order"><b>${esc(o.client || o.title)}</b>${o.client ? `<span>${esc(o.title)}</span>` : ''}</div>`;
+      if (!bc) { body.innerHTML = `${head}<div class="bx-note">L’envoi vers la facturation n’est pas configuré dans cette version.</div>`; foot.innerHTML = `<span class="grow"></span>${closeBtn}`; return; }
+      if (!target) { body.innerHTML = `${head}<div class="bx-note">Cette commande n’a pas de client. Renseigne le nom du client (ou choisis une fiche client) dans la commande, enregistre, puis réessaie.</div>`; foot.innerHTML = `<span class="grow"></span>${closeBtn}`; return; }
+      if (st.phase === 'init' || st.phase === 'loading') { body.innerHTML = `${head}<div class="bx-note">${st.phase === 'init' ? 'Connexion à la facturation…' : 'Lecture des clients de la facturation…'}</div>`; foot.innerHTML = `<span class="grow"></span>${closeBtn}`; return; }
+      const errLine = st.err ? `<div class="form-error" role="alert">${esc(st.err)}</div>` : '';
+      if (st.phase === 'login') {
+        body.innerHTML = `${head}<div class="bx-login"><p>Connecte-toi une fois avec ton compte de l’<b>application de facturation</b> (même e-mail, même mot de passe). Le mot de passe n’est pas enregistré.</p>
+          <label class="field"><span>E-mail de la facturation</span><input id="iv-mail" type="email" autocomplete="username" value="${esc(st.email)}"></label>
+          <label class="field"><span>Mot de passe</span><input id="iv-pass" type="password" autocomplete="current-password"></label>${errLine}</div>`;
+        foot.innerHTML = `<span class="grow"></span>${closeBtn}<button type="button" class="btn btn-primary" id="iv-login">Se connecter</button>`;
+        return;
+      }
+      if (st.phase === 'done') {
+        const d = st.done;
+        body.innerHTML = `${head}<div class="bx-ok" role="status">Brouillon <b>${esc(d.number)}</b> créé dans la facturation (${esc(fmtMoney(d.total))})${d.createdClient ? ', et le client a été ajouté' : ''}.</div>
+          <p class="bx-intro">Ouvre l’application de facturation, page « Factures » : vérifie le brouillon, choisis le mode de paiement, puis finalise-le là-bas. Rien n’est envoyé au client.</p>
+          ${d.linkOk ? '' : '<div class="form-error" role="alert">Le brouillon est créé, mais le lien n’a pas pu être enregistré sur la commande : note bien son numéro.</div>'}`;
+        foot.innerHTML = `<span class="grow"></span><button type="button" class="btn btn-primary" data-ivclose>Terminé</button>`;
+        return;
+      }
+      const clientInfo = st.match
+        ? `Client trouvé dans la facturation : <b>${esc(st.match.name)}</b>.`
+        : `Ce client n’existe pas encore dans la facturation : <b>${esc(target.name)}</b> sera ajouté${target.email || target.phone ? ' avec son e-mail, son téléphone et son adresse' : ''}.`;
+      const linkedBanner = o.billing_invoice_id
+        ? `<div class="bx-plan"><div>Une facture a déjà été créée pour cette commande : <b>${esc(o.billing_invoice_number || '')}</b>${st.linked ? ` (${esc(INVOICE_STATUS_FR[st.linked.status] || st.linked.status)})` : ''}.</div>
+            <label class="checkline"><input type="checkbox" id="iv-again" ${st.again ? 'checked' : ''}><span>Créer quand même une nouvelle facture</span></label></div>` : '';
+      body.innerHTML = `${head}${linkedBanner}
+        <div class="bx-who">Connecté à la facturation : <b>${esc(st.email)}</b> <button type="button" class="linkbtn" id="iv-logout">Se déconnecter</button></div>
+        <div class="iv-client">${clientInfo}</div>
+        <table class="iv-lines"><thead><tr><th>Description</th><th>Quantité</th><th>Prix unitaire (CHF)</th><th>Total</th><th></th></tr></thead><tbody>
+          ${st.lines.map((l, i) => `<tr data-i="${i}"><td><input data-k="description" value="${esc(l.description)}" aria-label="Description"></td>
+            <td><input data-k="qty" type="number" step="any" min="0" value="${esc(l.qty)}" aria-label="Quantité"></td>
+            <td><input data-k="price" type="number" step="0.05" value="${esc(l.price)}" aria-label="Prix unitaire"></td>
+            <td class="iv-lt">${esc(fmtMoney(lineTotal(l)))}</td><td>${st.lines.length > 1 ? `<button type="button" class="btn btn-quiet icon-btn" data-ivdel="${i}" aria-label="Supprimer la ligne">✕</button>` : ''}</td></tr>`).join('')}
+        </tbody></table>
+        <div class="iv-bar"><button type="button" class="btn btn-small" id="iv-add">+ Ajouter une ligne</button><span class="grow"></span><span class="iv-total">Total : <b id="iv-total">${esc(fmtMoney(total()))}</b></span></div>
+        <label class="field"><span>Note sur la facture (facultatif, visible par le client)</span><textarea id="iv-note" rows="2">${esc(st.note)}</textarea></label>
+        <small class="hint-line">Le brouillon est créé sans être finalisé. Le mode de paiement (carte ou QR-facture) et la date d’échéance se vérifient dans la facturation avant de finaliser.</small>${errLine}`;
+      const needAgain = o.billing_invoice_id && !st.again;
+      foot.innerHTML = `<span class="grow"></span>${closeBtn}<button type="button" class="btn btn-primary" id="iv-create" ${st.phase === 'sending' || needAgain ? 'disabled' : ''}>${st.phase === 'sending' ? 'Création…' : 'Créer le brouillon'}</button>`;
+    };
+
+    const loadBilling = async () => {
+      st.phase = 'loading'; paint();
+      try {
+        st.existing = await billingExisting(bc);
+        st.match = target ? findBillingClient(target, st.existing) : null;
+        const co = await bc.from('company_settings').select('*').eq('id', 1);
+        st.company = !co.error && co.data && co.data[0] ? co.data[0] : null;
+        if (o.billing_invoice_id) {
+          const li = await bc.from('invoices').select('id,number,status,total').eq('id', o.billing_invoice_id);
+          st.linked = !li.error && li.data && li.data[0] ? li.data[0] : null;
+        }
+        st.phase = 'ready'; st.err = '';
+      } catch (e) {
+        const be = billingError(e);
+        st.err = be.text;
+        st.phase = be.relogin ? 'login' : 'ready';
+      }
+      paint();
+    };
+    const doLogin = async () => {
+      const email = ($('#iv-mail').value || '').trim();
+      const password = $('#iv-pass').value || '';
+      if (!email || !password) { st.err = 'Saisis l’e-mail et le mot de passe de la facturation.'; st.email = email; paint(); return; }
+      st.email = email;
+      $('#iv-login').disabled = true;
+      const { data, error } = await bc.auth.signInWithPassword({ email, password });
+      if (error || !data || !data.session) { st.err = billingError(error || 'Invalid login credentials').text; paint(); return; }
+      try { localStorage.setItem('dayan_billing_email', email); } catch (e) { /* ignoré */ }
+      st.email = data.session.user.email || email;
+      st.err = '';
+      await loadBilling();
+    };
+    const doCreate = async () => {
+      const lines = st.lines.filter((l) => l.description.trim());
+      if (!lines.length) { st.err = 'Ajoute au moins une ligne avec une description.'; paint(); return; }
+      if (lines.some((l) => !(Number(l.qty) > 0) || l.price === '' || Number.isNaN(Number(l.price)))) { st.err = 'Chaque ligne doit avoir une quantité supérieure à zéro et un prix.'; paint(); return; }
+      st.phase = 'sending'; st.err = ''; paint();
+      let createdClient = false;
+      let invoice = null;
+      try {
+        let clientId = st.match && st.match.id;
+        if (!clientId) {
+          const row = { name: target.name, address: target.address, postal_code: target.postal_code, city: target.city, country: target.country, email: target.email, phone: target.phone, notes: target.notes };
+          const c = await bc.from('clients').insert(row).select().single();
+          if (c.error) throw c.error;
+          clientId = c.data.id;
+          createdClient = true;
+        }
+        const me = state.profiles.find((p) => p.id === state.me.id);
+        const issue = ymd(new Date());
+        const iv = await bc.from('invoices').insert({ client_id: clientId, contact_name: me ? me.name : null, issue_date: issue, due_date: ymd(addDays(new Date(), billingDueDays(st.company))), notes: st.note.trim() || null }).select().single();
+        if (iv.error) throw iv.error;
+        invoice = iv.data;
+        const items = await bc.from('invoice_items').insert(lines.map((l, i) => ({ invoice_id: invoice.id, type: l.type || null, description: l.description.trim(), unit_price: Number(l.price), quantity: Number(l.qty), position: i })));
+        if (items.error) {
+          try { await bc.from('invoices').delete().eq('id', invoice.id); } catch (e2) { /* nettoyage au mieux */ }
+          throw items.error;
+        }
+        const lk = await sb.from('orders').update({ billing_invoice_id: invoice.id, billing_invoice_number: invoice.number, billed_at: new Date().toISOString() }).eq('id', o.id);
+        await loadTable('orders');
+        render();
+        st.done = { number: invoice.number, total: total(), createdClient, linkOk: !lk.error };
+        st.phase = 'done';
+        toast(`Brouillon ${invoice.number} créé dans la facturation`);
+      } catch (e) {
+        const be = billingError(e);
+        st.err = be.text;
+        st.phase = be.relogin ? 'login' : 'ready';
+      }
+      paint();
+    };
+
+    const ov = $('#iv-overlay');
+    ov.addEventListener('mousedown', (e) => { if (e.target.id === 'iv-overlay') close(); });
+    ov.addEventListener('click', (e) => {
+      if (e.target.closest('[data-ivclose]')) { close(); return; }
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.id === 'iv-login') doLogin();
+      else if (btn.id === 'iv-create') doCreate();
+      else if (btn.id === 'iv-logout') { Promise.resolve(bc.auth.signOut({ scope: 'local' })).catch(() => {}).then(() => { st.phase = 'login'; st.err = ''; paint(); }); }
+      else if (btn.id === 'iv-add') { st.lines.push({ type: 'Objet 3D', description: '', qty: '1', price: '' }); paint(); }
+      else if (btn.dataset.ivdel != null) { st.lines.splice(Number(btn.dataset.ivdel), 1); paint(); }
+    });
+    ov.addEventListener('input', (e) => {
+      const tr = e.target.closest('tr[data-i]');
+      if (tr && e.target.dataset.k) {
+        st.lines[Number(tr.dataset.i)][e.target.dataset.k] = e.target.value;
+        tr.querySelector('.iv-lt').textContent = fmtMoney(lineTotal(st.lines[Number(tr.dataset.i)]));
+        const tt = $('#iv-total');
+        if (tt) tt.textContent = fmtMoney(total());
+      }
+      if (e.target.id === 'iv-note') st.note = e.target.value;
+    });
+    ov.addEventListener('change', (e) => { if (e.target.id === 'iv-again') { st.again = e.target.checked; const b = $('#iv-create'); if (b) b.disabled = !!(o.billing_invoice_id && !st.again); } });
+    ov.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'iv-pass') { e.preventDefault(); doLogin(); } });
+
+    paint();
+    if (!bc || !target) return;
+    const { data } = await bc.auth.getSession();
+    if (data && data.session) { st.email = data.session.user.email || st.email; await loadBilling(); } else { st.phase = 'login'; paint(); }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Fichiers 3D : bibliothèque partagée, aperçu des STL                */
+  /* ------------------------------------------------------------------ */
+  const LIB_ACCEPT = '.stl,.3mf,.obj,.step,.stp,.gcode,.bgcode,.scad,.zip,.png,.jpg,.jpeg';
+  const LIB_MAX = 50 * 1024 * 1024;           // limite de l'offre Supabase : 50 Mo par fichier
+  const LIB_PREVIEW_MAX_TRIS = 1000000;       // au-delà, pas d'aperçu (pour ne pas bloquer un téléphone)
+  const LIB_KIND_FR = { all: 'Tous', stl: 'STL', '3mf': '3MF', gcode: 'G-code', other: 'Autres' };
+  const extOf = (n) => { const m = /\.([a-z0-9]+)$/i.exec(String(n || '')); return m ? m[1].toLowerCase() : ''; };
+  const libKind = (e) => (e === 'stl' ? 'stl' : e === '3mf' ? '3mf' : (e === 'gcode' || e === 'bgcode') ? 'gcode' : 'other');
+  const safeName = (n) => String(n).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]+/g, '_');
+  const uid = () => (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const r1 = (x) => Math.round(Number(x) * 10) / 10;
+  const readBuffer = (file) => (file.arrayBuffer ? file.arrayBuffer() : new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsArrayBuffer(file); }));
+  const libDimsText = (d) => (d && d.x != null ? `${fmtNum(d.x)} × ${fmtNum(d.y)} × ${fmtNum(d.z)} mm` : '');
+
+  // lecture d'un fichier STL (binaire ou texte) : triangles, dimensions et volume
+  function parseSTL(buf) {
+    const len = buf.byteLength;
+    const dv = new DataView(buf);
+    const n = len >= 84 ? dv.getUint32(80, true) : 0;
+    let head = '';
+    const hb = new Uint8Array(buf, 0, Math.min(len, 300));
+    for (let i = 0; i < hb.length; i++) head += String.fromCharCode(hb[i]);
+    const looksAscii = /^\s*solid/i.test(head) && /facet|vertex|endsolid/i.test(head);
+    let pos = null;
+    if (n > 0 && 84 + n * 50 <= len && (84 + n * 50 === len || !looksAscii)) {
+      pos = new Float32Array(n * 9);
+      let o = 84;
+      const littleEndian = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+      if (littleEndian) {
+        // appareils usuels : on recopie les 36 octets de chaque triangle (bien plus rapide que 9 lectures)
+        const src = new Uint8Array(buf);
+        const dst = new Uint8Array(pos.buffer);
+        for (let i = 0, d = 0; i < n; i++, o += 50) { for (let k = 0; k < 36; k++) dst[d++] = src[o + 12 + k]; }
+      } else {
+        for (let i = 0; i < n; i++, o += 50) for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + 12 + k * 4, true);
+      }
+    } else if (looksAscii || /vertex/i.test(head)) {
+      let txt = '';
+      if (typeof TextDecoder !== 'undefined') txt = new TextDecoder().decode(buf);
+      else { const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 8192) txt += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); }
+      const re = /vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g;
+      const arr = [];
+      let m;
+      while ((m = re.exec(txt))) arr.push(+m[1], +m[2], +m[3]);
+      const t = Math.floor(arr.length / 9);
+      pos = new Float32Array(t * 9);
+      for (let i = 0; i < t * 9; i++) pos[i] = arr[i];
+    }
+    if (!pos || pos.length < 9) throw new Error('fichier STL vide ou illisible');
+    const tris = pos.length / 9;
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    let vol = 0;
+    for (let i = 0; i < tris; i++) {
+      const o = i * 9;
+      for (let k = 0; k < 9; k++) {
+        const v = pos[o + k];
+        if (!Number.isFinite(v)) throw new Error('fichier STL corrompu');
+        const ax = k % 3;
+        if (v < min[ax]) min[ax] = v;
+        if (v > max[ax]) max[ax] = v;
+      }
+      vol += (pos[o] * (pos[o + 4] * pos[o + 8] - pos[o + 5] * pos[o + 7]) - pos[o + 1] * (pos[o + 3] * pos[o + 8] - pos[o + 5] * pos[o + 6]) + pos[o + 2] * (pos[o + 3] * pos[o + 7] - pos[o + 4] * pos[o + 6])) / 6;
+    }
+    return { positions: pos, tris, min, max, dims: { x: max[0] - min[0], y: max[1] - min[1], z: max[2] - min[2] }, volume: Math.abs(vol) };
+  }
+
+  // petit visualiseur 3D (WebGL) : tourner au doigt ou à la souris, zoomer à la molette ou en pinçant
+  function createStlViewer(canvas, mesh) {
+    let gl = null;
+    try { gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true }) || canvas.getContext('experimental-webgl'); } catch (e) { gl = null; }
+    if (!gl) return null;
+    const T = mesh.tris;
+    const c = [(mesh.min[0] + mesh.max[0]) / 2, (mesh.min[1] + mesh.max[1]) / 2, (mesh.min[2] + mesh.max[2]) / 2];
+    const rad = Math.max(1e-6, 0.5 * Math.hypot(mesh.dims.x, mesh.dims.y, mesh.dims.z));
+    const P = new Float32Array(T * 9);
+    const N = new Float32Array(T * 9);
+    for (let i = 0; i < T; i++) {
+      const o = i * 9;
+      for (let k = 0; k < 9; k++) P[o + k] = (mesh.positions[o + k] - c[k % 3]) / rad;
+      const ux = P[o + 3] - P[o], uy = P[o + 4] - P[o + 1], uz = P[o + 5] - P[o + 2];
+      const vx = P[o + 6] - P[o], vy = P[o + 7] - P[o + 1], vz = P[o + 8] - P[o + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nx /= l; ny /= l; nz /= l;
+      for (let v = 0; v < 3; v++) { N[o + v * 3] = nx; N[o + v * 3 + 1] = ny; N[o + v * 3 + 2] = nz; }
+    }
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec3 aP; attribute vec3 aN; uniform mat4 uM; varying vec3 vN; void main(){ vN = aN; gl_Position = uM * vec4(aP, 1.0); }'));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec3 vN; uniform vec3 uL; void main(){ float d = abs(dot(normalize(vN), uL)); float s = pow(max(dot(reflect(-uL, normalize(vN)), uL), 0.0), 8.0) * 0.08; vec3 col = vec3(0.80,0.82,0.86) * (0.28 + 0.72 * d) + s; gl_FragColor = vec4(col, 1.0); }'));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+    const buf = (arr, name) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW); const l = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 0, 0); return b; };
+    const bufs = [buf(P, 'aP'), buf(N, 'aN')];
+    const uM = gl.getUniformLocation(prog, 'uM');
+    const uL = gl.getUniformLocation(prog, 'uL');
+    let yaw = -0.6, pitch = 0.45, dist = 2.8, dead = false;
+    const draw = () => {
+      if (dead) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(2, Math.round((canvas.clientWidth || canvas.width) * dpr));
+      const h = Math.max(2, Math.round((canvas.clientHeight || canvas.height) * dpr));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0.106, 0.11, 0.125, 1);
+      gl.enable(gl.DEPTH_TEST);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      // caméra qui tourne autour de l'objet, Z vers le haut (comme dans les trancheurs)
+      const ex = dist * Math.cos(pitch) * Math.cos(yaw), ey = dist * Math.cos(pitch) * Math.sin(yaw), ez = dist * Math.sin(pitch);
+      const f = [-ex / dist, -ey / dist, -ez / dist];
+      let s = [f[1] * 1 - f[2] * 0, f[2] * 0 - f[0] * 1, 0];
+      const sl = Math.hypot(s[0], s[1], s[2]) || 1; s = [s[0] / sl, s[1] / sl, s[2] / sl];
+      const u = [s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0]];
+      const view = [s[0], u[0], -f[0], 0, s[1], u[1], -f[1], 0, s[2], u[2], -f[2], 0, -(s[0] * ex + s[1] * ey + s[2] * ez), -(u[0] * ex + u[1] * ey + u[2] * ez), (f[0] * ex + f[1] * ey + f[2] * ez), 1];
+      const fy = 1 / Math.tan(0.4), asp = w / h, nr = 0.1, fr = 20;
+      const proj = [fy / asp, 0, 0, 0, 0, fy, 0, 0, 0, 0, (fr + nr) / (nr - fr), -1, 0, 0, (2 * fr * nr) / (nr - fr), 0];
+      const m = new Float32Array(16);
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let v = 0; for (let k = 0; k < 4; k++) v += proj[k * 4 + j] * view[i * 4 + k]; m[i * 4 + j] = v; }
+      gl.useProgram(prog);
+      gl.uniformMatrix4fv(uM, false, m);
+      const lx = -f[0] + 0.35 * s[0] + 0.5 * u[0], ly = -f[1] + 0.35 * s[1] + 0.5 * u[1], lz = -f[2] + 0.35 * s[2] + 0.5 * u[2];
+      const ll = Math.hypot(lx, ly, lz) || 1;
+      gl.uniform3f(uL, lx / ll, ly / ll, lz / ll);
+      bufs.forEach((b, i) => { gl.bindBuffer(gl.ARRAY_BUFFER, b); const l = gl.getAttribLocation(prog, i ? 'aN' : 'aP'); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 0, 0); });
+      gl.drawArrays(gl.TRIANGLES, 0, T * 3);
+    };
+    const pts = new Map();
+    let pinch = 0;
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('pointerdown', (e) => { pts.set(e.pointerId, [e.clientX, e.clientY]); try { canvas.setPointerCapture(e.pointerId); } catch (x) { /* ignoré */ } pinch = 0; });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      const prev = pts.get(e.pointerId);
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 1) {
+        yaw -= (e.clientX - prev[0]) * 0.01;
+        pitch = Math.max(-1.45, Math.min(1.45, pitch + (e.clientY - prev[1]) * 0.01));
+      } else if (pts.size === 2) {
+        const [p, q] = [...pts.values()];
+        const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+        if (pinch) dist = Math.max(1.4, Math.min(8, dist * (pinch / d)));
+        pinch = d;
+      }
+      draw();
+    });
+    const up = (e) => { pts.delete(e.pointerId); pinch = 0; };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); dist = Math.max(1.4, Math.min(8, dist * Math.exp(e.deltaY * 0.0012))); draw(); }, { passive: false });
+    return {
+      draw,
+      setAngles: (y, p) => { yaw = y; pitch = p; },
+      snapshot: () => new Promise((res) => canvas.toBlob(res, 'image/png')),
+      destroy: () => { dead = true; try { const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } catch (e) { /* ignoré */ } }
+    };
+  }
+
+  // vignette de la bibliothèque : l'objet vu de trois quarts, sur le fond de l'appli
+  async function makeThumb(mesh) {
+    const cv = document.createElement('canvas');
+    cv.width = 360; cv.height = 270;
+    const v = createStlViewer(cv, mesh);
+    if (!v) return null;
+    v.setAngles(-0.6, 0.45);
+    v.draw();
+    const blob = await v.snapshot();
+    v.destroy();
+    return blob;
+  }
+
+  /* ---------- envoi de fichiers ---------- */
+  async function uploadLibraryFiles(files) {
+    const list = [...files];
+    const res = { ok: 0, skipped: [], failed: [] };
+    if (!list.length) return res;
+    state.libBusy = { done: 0, total: list.length, name: '' };
+    for (const f of list) {
+      state.libBusy.name = f.name;
+      if (state.view === 'library') render();
+      try {
+        const ext = extOf(f.name);
+        if (f.size > LIB_MAX) throw new Error('plus grand que 50 Mo');
+        if (state.library_files.some((x) => x.file_name === f.name && Number(x.size) === f.size)) { res.skipped.push(f.name); state.libBusy.done += 1; continue; }
+        let dims = null;
+        let thumb = null;
+        if (ext === 'stl') {
+          try {
+            const mesh = parseSTL(await readBuffer(f));
+            dims = { x: r1(mesh.dims.x), y: r1(mesh.dims.y), z: r1(mesh.dims.z), tris: mesh.tris, vol: Math.round(mesh.volume / 10) / 100 };
+            if (mesh.tris <= LIB_PREVIEW_MAX_TRIS) thumb = await makeThumb(mesh);
+          } catch (e) { /* le fichier est envoyé quand même, sans dimensions ni vignette */ }
+        }
+        const id = uid();
+        const path = `bibliotheque/${id}/${safeName(f.name)}`;
+        const up = await sb.storage.from(BUCKET).upload(path, f, { contentType: f.type || 'application/octet-stream' });
+        if (up.error) throw up.error;
+        let thumbPath = null;
+        if (thumb) {
+          const tp = `bibliotheque/${id}/apercu.png`;
+          const t = await sb.storage.from(BUCKET).upload(tp, thumb, { contentType: 'image/png' });
+          if (!t.error) thumbPath = tp;
+        }
+        const ins = await sb.from('library_files').insert({ title: f.name.replace(/\.[^.]+$/, ''), file_name: f.name, path, thumb_path: thumbPath, size: f.size, ext, tags: [], dims });
+        if (ins.error) { await sb.storage.from(BUCKET).remove([path, ...(thumbPath ? [thumbPath] : [])]); throw ins.error; }
+        res.ok += 1;
+      } catch (e) { res.failed.push(`${f.name} (${e && e.message ? e.message : e})`); }
+      state.libBusy.done += 1;
+    }
+    state.libBusy = null;
+    await loadTable('library_files');
+    render();
+    const parts = [];
+    if (res.ok) parts.push(`${res.ok} fichier${res.ok > 1 ? 's' : ''} ajouté${res.ok > 1 ? 's' : ''}`);
+    if (res.skipped.length) parts.push(`${res.skipped.length} déjà présent${res.skipped.length > 1 ? 's' : ''} (ignoré${res.skipped.length > 1 ? 's' : ''})`);
+    if (res.failed.length) parts.push(`${res.failed.length} refusé${res.failed.length > 1 ? 's' : ''} : ${res.failed.join(' ; ')}`);
+    toast(parts.join(', ') || 'Rien à envoyer', res.failed.length > 0 && !res.ok);
+    return res;
+  }
+  function pickLibraryFiles() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.multiple = true; inp.accept = LIB_ACCEPT;
+    inp.addEventListener('change', () => { if (inp.files && inp.files.length) uploadLibraryFiles(inp.files); });
+    inp.click();
+  }
+  // glisser-déposer sur la page « Fichiers 3D »
+  document.addEventListener('dragover', (e) => { if (state.started && state.view === 'library' && e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files')) { e.preventDefault(); const z = $('#lib-drop'); if (z) z.classList.add('over'); } });
+  document.addEventListener('dragleave', () => { const z = $('#lib-drop'); if (z) z.classList.remove('over'); });
+  document.addEventListener('drop', (e) => {
+    if (!state.started || state.view !== 'library' || !e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    const z = $('#lib-drop'); if (z) z.classList.remove('over');
+    uploadLibraryFiles(e.dataTransfer.files);
+  });
+
+  /* ---------- la page ---------- */
+  const libThumbTried = new Set();
+  function libFiltered() {
+    const q = norm(state.libQuery);
+    return state.library_files.filter((f) => (state.libType === 'all' || libKind(f.ext) === state.libType)
+      && (!state.libTag || (f.tags || []).includes(state.libTag))
+      && (!q || norm([f.title, f.file_name, (f.tags || []).join(' '), f.notes].filter(Boolean).join(' ')).includes(q)))
+      .sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+  }
+  function libCard(f) {
+    const th = f.thumb_path && photoCache.get(f.thumb_path);
+    const order = f.order_id ? state.orders.find((o) => o.id === f.order_id) : null;
+    const who = (state.profiles.find((p) => p.id === f.created_by) || {}).name;
+    return `<article class="lib-card"><button type="button" class="lib-thumb" data-act="lib-open" data-id="${f.id}" aria-label="Ouvrir ${esc(f.title)}">${th ? `<img src="${esc(th.url)}" alt="">` : `<span class="lib-ext">${esc((f.ext || 'fichier').toUpperCase())}</span>`}</button>
+      <div class="lib-body"><b class="lib-title">${esc(f.title)}</b>
+        <small class="lib-file">${esc(f.file_name)}</small>
+        <div class="lib-meta">${esc([fmtSize(f.size), libDimsText(f.dims)].filter(Boolean).join(' · '))}</div>
+        <div class="lib-tags">${(f.tags || []).map((t) => `<span class="tag soft">${esc(t)}</span>`).join('')}${order ? `<span class="tag" title="Commande liée">${esc(orderLabel(order))}</span>` : ''}</div>
+        <small class="lib-by">${esc(who || '')}${who ? ', ' : ''}${esc(fmtShort(new Date(f.created_at)))}</small></div></article>`;
+  }
+  function libResultsHtml() {
+    const list = libFiltered();
+    if (!state.library_files.length) return '<div class="empty">La bibliothèque est vide. Glisse tes fichiers STL dans le cadre ci-dessus, ou touche « + Fichiers ».</div>';
+    if (!list.length) return '<div class="empty">Aucun fichier ne correspond à ces filtres.</div>';
+    return `<div class="lib-grid">${list.map(libCard).join('')}</div>`;
+  }
+  function libraryHtml() {
+    const all = state.library_files;
+    const counts = { all: all.length, stl: 0, '3mf': 0, gcode: 0, other: 0 };
+    all.forEach((f) => { counts[libKind(f.ext)] += 1; });
+    const tags = [...new Set(all.flatMap((f) => f.tags || []))].sort((x, y) => x.localeCompare(y, 'fr'));
+    const used = all.reduce((s, f) => s + Number(f.size || 0), 0);
+    const busy = state.libBusy;
+    // vignettes : liens temporaires demandés une fois, puis on réaffiche
+    const need = all.map((f) => f.thumb_path).filter((p) => p && !photoCache.has(p) && !libThumbTried.has(p));
+    if (need.length) { need.forEach((p) => libThumbTried.add(p)); signedUrls(need).then(() => { if (state.view === 'library') render(); }); }
+    return `<div class="lib-page">
+      ${busy ? `<div class="bx-plan" role="status">Envoi en cours : ${busy.done} sur ${busy.total}${busy.name ? ` (${esc(busy.name)})` : ''}…</div>` : ''}
+      <div class="lib-drop" id="lib-drop"><b>Glisse tes fichiers ici</b><span>STL, 3MF, G-code, STEP, OBJ… jusqu’à 50 Mo par fichier. Tout le monde les retrouve ici.</span></div>
+      <div class="fil-filters">
+        <div class="fchips" role="group" aria-label="Type de fichier">${Object.keys(LIB_KIND_FR).map((k) => `<button type="button" class="fchip" data-act="lib-type" data-t="${k}" aria-pressed="${state.libType === k}">${LIB_KIND_FR[k]}${counts[k] ? ` <small>${counts[k]}</small>` : ''}</button>`).join('')}</div>
+        <select id="lib-tag" aria-label="Étiquette"><option value="">Toutes les étiquettes</option>${tags.map((t) => `<option value="${esc(t)}" ${state.libTag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        <input id="lib-search" type="search" placeholder="Nom, étiquette, note…" value="${esc(state.libQuery)}" autocomplete="off">
+      </div>
+      <div id="lib-results">${libResultsHtml()}</div>
+      <small class="hint-line">${all.length} fichier${all.length > 1 ? 's' : ''}, ${esc(fmtSize(used) || '0 Ko')} dans la bibliothèque. Repère : l’offre gratuite de Supabase offre 1 Go de stockage au total (photos et pièces jointes comprises).</small>
+    </div>`;
+  }
+
+  // fichiers de la bibliothèque liés à une commande (dans la fiche de la commande)
+  function libLinkedHtml(rec) {
+    const linked = state.library_files.filter((f) => f.order_id === rec.id);
+    return `<div class="files lib-box"><h4>Fichiers 3D de la bibliothèque</h4>
+      ${linked.length ? linked.map((f) => `<button type="button" class="lib-link" data-act="lib-open" data-id="${f.id}">${esc(f.title)} <small>${esc((f.ext || '').toUpperCase())} ${esc(fmtSize(f.size))}</small></button>`).join('') : '<small class="hint-line">Aucun fichier lié. Dans la page « Fichiers 3D », ouvre un fichier et choisis cette commande pour le lier.</small>'}</div>`;
+  }
+
+  /* ---------- la fiche d'un fichier ---------- */
+  function openLibraryFile(id) {
+    const f = state.library_files.find((x) => x.id === id);
+    if (!f) return;
+    if ($('#modal-root .modal.search')) closeModal();
+    const kind = libKind(f.ext);
+    const who = (state.profiles.find((p) => p.id === f.created_by) || {}).name;
+    const d = f.dims || {};
+    const orders = state.orders.slice().sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+    const row = (l, v) => (v ? `<div class="d-row"><span>${esc(l)}</span><b>${esc(v)}</b></div>` : '');
+    $('#layer-root').innerHTML = `
+      <div class="overlay layer" id="lf-overlay">
+        <div class="modal lib-detail" role="dialog" aria-modal="true" aria-label="Fiche du fichier">
+          <div class="modal-head"><h3>${esc(f.title)}</h3><button type="button" class="btn btn-quiet icon-btn" data-lfclose aria-label="Fermer">✕</button></div>
+          <div class="modal-body">
+            <div class="lf-grid">
+              <div class="lf-view">${kind === 'stl' ? '<canvas id="lf-canvas" class="lf-canvas" aria-label="Aperçu 3D"></canvas><div class="lf-note" id="lf-note">Chargement de l’aperçu…</div>' : `<div class="lf-bigext">${esc((f.ext || 'fichier').toUpperCase())}</div>`}
+                ${kind === 'stl' ? '<small class="hint-line">Glisse pour tourner, molette ou pincement pour zoomer.</small>' : ''}</div>
+              <div class="lf-info">
+                ${row('Fichier', f.file_name)}${row('Taille', fmtSize(f.size))}
+                ${row('Dimensions', libDimsText(d))}${row('Volume', d.vol != null ? `${fmtNum(d.vol)} cm³` : '')}${row('Triangles', d.tris != null ? fmtNum(d.tris) : '')}
+                ${row('Ajouté par', [who, fmtDateTime(f.created_at)].filter(Boolean).join(', '))}
+                <label class="field"><span>Titre</span><input id="lf-title" value="${esc(f.title)}"></label>
+                <label class="field"><span>Étiquettes (séparées par des virgules)</span><input id="lf-tags" value="${esc((f.tags || []).join(', '))}" placeholder="support, capteur, v2"></label>
+                <label class="field"><span>Commande liée</span><select id="lf-order"><option value="">Aucune</option>${orders.map((o) => `<option value="${o.id}" ${f.order_id === o.id ? 'selected' : ''}>${esc(orderLabel(o))}</option>`).join('')}</select></label>
+                <label class="field"><span>Notes (version, réglages, particularités)</span><textarea id="lf-notes" rows="3">${esc(f.notes || '')}</textarea></label>
+                <p class="form-error" id="lf-error" role="alert"></p>
+              </div>
+            </div>
+          </div>
+          <div class="modal-foot"><button type="button" class="btn" id="lf-download">Télécharger</button><button type="button" class="btn btn-quiet" id="lf-delete">Supprimer</button><span class="grow"></span>
+            <button type="button" class="btn" data-lfclose>Fermer</button><button type="button" class="btn btn-primary" id="lf-save">Enregistrer</button></div>
+        </div>
+      </div>`;
+    let viewer = null;
+    let closed = false;
+    const close = () => { closed = true; if (viewer) viewer.destroy(); $('#layer-root').innerHTML = ''; };
+    const ov = $('#lf-overlay');
+    ov.querySelectorAll('[data-lfclose]').forEach((b) => b.addEventListener('click', close));
+    ov.addEventListener('mousedown', (e) => { if (e.target.id === 'lf-overlay') close(); });
+    $('#lf-download').addEventListener('click', async () => {
+      const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(f.path, 600, { download: f.file_name });
+      if (error) { toast(`Téléchargement impossible : ${error.message}`, true); return; }
+      window.open(data.signedUrl, '_blank');
+    });
+    $('#lf-save').addEventListener('click', async () => {
+      const err = $('#lf-error');
+      err.textContent = '';
+      const title = $('#lf-title').value.trim();
+      if (!title) { err.textContent = 'Le titre ne peut pas être vide.'; return; }
+      const seen = new Set();
+      const tags = $('#lf-tags').value.split(/[,;]/).map((t) => t.trim()).filter((t) => { const k = norm(t); if (!t || seen.has(k)) return false; seen.add(k); return true; });
+      const { error } = await sb.from('library_files').update({ title, tags, notes: $('#lf-notes').value.trim() || null, order_id: $('#lf-order').value || null }).eq('id', f.id);
+      if (error) { err.textContent = `Enregistrement impossible : ${error.message}`; return; }
+      await loadTable('library_files');
+      close();
+      render();
+      toast('Fichier enregistré');
+    });
+    $('#lf-delete').addEventListener('click', async () => {
+      if (!window.confirm(`Supprimer définitivement « ${f.title} » de la bibliothèque pour toute l’équipe ? C’est irréversible.`)) return;
+      await sb.storage.from(BUCKET).remove([f.path, ...(f.thumb_path ? [f.thumb_path] : [])]);
+      const { error } = await sb.from('library_files').delete().eq('id', f.id);
+      if (error) { toast(`Suppression impossible : ${error.message}`, true); return; }
+      await loadTable('library_files');
+      close();
+      render();
+      toast('Fichier supprimé');
+    });
+    if (kind === 'stl') {
+      (async () => {
+        const note = (t) => { const n = $('#lf-note'); if (n && !closed) { n.textContent = t; n.classList.toggle('hidden', !t); } };
+        try {
+          const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(f.path, 600);
+          if (error) throw error;
+          const res = await fetch(data.signedUrl);
+          if (!res.ok) throw new Error(`réponse ${res.status}`);
+          const mesh = parseSTL(await res.arrayBuffer());
+          if (closed) return;
+          if (mesh.tris > LIB_PREVIEW_MAX_TRIS) { note(`Aperçu non disponible : ce fichier est très détaillé (${fmtNum(mesh.tris)} triangles). Le téléchargement fonctionne.`); return; }
+          viewer = createStlViewer($('#lf-canvas'), mesh);
+          if (!viewer) { note('Aperçu 3D indisponible sur cet appareil. Le téléchargement fonctionne.'); return; }
+          note('');
+          viewer.draw();
+        } catch (e) { note(`Aperçu indisponible (${e && e.message ? e.message : e}). Le téléchargement fonctionne.`); }
+      })();
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -2147,7 +2869,7 @@
   const FIELD_FR = {
     status: 'statut', due_date: 'échéance', price_chf: 'prix', title: 'titre', client: 'client', notes: 'notes',
     start_at: 'début', end_at: 'fin', machine_id: 'machine', order_id: 'commande', assignee: 'responsable',
-    done: 'terminée', kind: 'type', kind: 'type', source: 'origine', stripe_session_id: 'paiement Stripe', member: 'membre', day: 'date', hours: 'heures', activity: 'activité', remaining_g: 'reste (g)', brand: 'marque', filament_type: 'matière', color_name: 'couleur', color_hex: 'teinte', diameter: 'diamètre (mm)', nozzle_min: 'buse min (°C)', nozzle_max: 'buse max (°C)', bed_c: 'plateau (°C)', dry_c: 'séchage (°C)', dry_h: 'séchage (h)', tare_g: 'poids à vide (g)', price_chf: 'prix payé', purchased_at: 'acheté le', supplier: 'fournisseur', location: 'emplacement', opened_at: 'ouverte le', dried_at: 'séchée le', dry_storage: 'stockée au sec', initial_g: 'poids neuf (g)', alert_g: 'seuil d’alerte (g)', label: 'nom', every_h: 'tous les (h)', last_done_at: 'dernier entretien', fail_reason: 'cause de l’échec', done_at: 'terminée le', priority: 'priorité', tags: 'étiquettes', client_id: 'fiche client', duration_h: 'durée (h)', phone: 'téléphone', email: 'e-mail', address: 'adresse', reason: 'raison', reorder_qty: 'quantité à commander', quantity: 'quantité en stock', min_quantity: 'seuil d’alerte', cost_chf: 'prix payé', cost_qty: 'quantité du prix', category: 'catégorie', unit: 'unité', recurrence: 'répétition', recur_until: 'répétition jusqu’au', date_from: 'du', date_to: 'au', user_id: 'personne', note: 'note', name: 'nom'
+    done: 'terminée', kind: 'type', kind: 'type', source: 'origine', stripe_session_id: 'paiement Stripe', member: 'membre', day: 'date', hours: 'heures', activity: 'activité', remaining_g: 'reste (g)', hourly_rate: 'tarif horaire (CHF/h)', file_name: 'fichier', labor_h: 'main-d’œuvre (h)', billing_invoice_number: 'facture', billed_at: 'facturée le', brand: 'marque', filament_type: 'matière', color_name: 'couleur', color_hex: 'teinte', diameter: 'diamètre (mm)', nozzle_min: 'buse min (°C)', nozzle_max: 'buse max (°C)', bed_c: 'plateau (°C)', dry_c: 'séchage (°C)', dry_h: 'séchage (h)', tare_g: 'poids à vide (g)', price_chf: 'prix payé', purchased_at: 'acheté le', supplier: 'fournisseur', location: 'emplacement', opened_at: 'ouverte le', dried_at: 'séchée le', dry_storage: 'stockée au sec', initial_g: 'poids neuf (g)', alert_g: 'seuil d’alerte (g)', label: 'nom', every_h: 'tous les (h)', last_done_at: 'dernier entretien', fail_reason: 'cause de l’échec', done_at: 'terminée le', priority: 'priorité', tags: 'étiquettes', client_id: 'fiche client', duration_h: 'durée (h)', phone: 'téléphone', email: 'e-mail', address: 'adresse', reason: 'raison', reorder_qty: 'quantité à commander', quantity: 'quantité en stock', min_quantity: 'seuil d’alerte', cost_chf: 'prix payé', cost_qty: 'quantité du prix', category: 'catégorie', unit: 'unité', recurrence: 'répétition', recur_until: 'répétition jusqu’au', date_from: 'du', date_to: 'au', user_id: 'personne', note: 'note', name: 'nom'
   };
   const VAL_FR = {
     todo: 'à faire', doing: 'en cours', done: 'terminé', planned: 'planifiée', printing: 'en impression',
@@ -2257,10 +2979,14 @@
         [{ k: 'client', l: 'Nom du client', t: 'text' }, { k: 'status', l: 'État', t: 'select', o: () => ORDER_STATUS }],
         { k: 'title', l: 'Objet de la commande', t: 'text', req: true },
         [{ k: 'due_date', l: 'Échéance', t: 'date' }, { k: 'price_chf', l: 'Prix (CHF)', t: 'number', step: '0.05' }],
+        { k: 'labor_h', l: 'Temps de préparation et de finition (heures)', t: 'number', step: '0.25', hint: 'Modélisation, réglages, ponçage, emballage… compté au tarif horaire de la main-d’œuvre (bouton « Tarifs »).' },
         { k: 'tags', l: 'Étiquettes (séparées par des virgules)', t: 'text', hint: 'Exemples : laser, impression 3D, cadeau' },
         { k: 'notes', l: 'Notes', t: 'textarea' }
       ],
-      extraHtml: (rec) => (rec && rec.source === 'boutique'
+      extraHtml: (rec) => (rec ? libLinkedHtml(rec) + `<div class="files billing-box"><h4>Facturation</h4>
+        ${rec.billing_invoice_number ? `<div class="bb-line">Brouillon créé dans la facturation : <b>${esc(rec.billing_invoice_number)}</b>${rec.billed_at ? ` le ${esc(fmtDateTime(rec.billed_at))}` : ''}</div>` : '<small class="hint-line">Aucune facture créée pour cette commande.</small>'}
+        <div><button type="button" class="btn btn-small" data-act="order-invoice" data-id="${rec.id}">${rec.billing_invoice_number ? 'Créer une autre facture…' : 'Créer un brouillon de facture…'}</button></div>
+        <small class="hint-line">Enregistre d’abord les modifications de la commande : la facture reprend les données enregistrées.</small></div>` : '') + (rec && rec.source === 'boutique'
         ? `<div class="files"><h4>Commande de la boutique du site</h4><small class="hint-line">Payée par carte via Stripe${rec.stripe_session_id ? ` (${esc(rec.stripe_session_id)})` : ''}. Le détail des articles et l’adresse sont dans les notes.</small></div>` : ''),
       prepare: (v) => {
         v.tags = v.tags ? v.tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
@@ -2576,19 +3302,30 @@
           });
         }
       } else {
-        const c = orderCost(rec ? rec.id : null, rows);
         const priceEl = $('#f_price_chf');
+        const laborEl = $('#f_labor_h');
         const price = priceEl && priceEl.value !== '' ? Number(priceEl.value) : null;
-        const hours = rec ? printHours(rec.id) : '';
+        const pf = orderProfit(rec ? rec.id : null, rows, price, laborEl ? laborEl.value : '');
+        const c = pf.mat;
+        const t = tariffs();
         const lines = [];
-        if (c.prints > 0) lines.push(`Impressions liées : ${esc(fmtMoney(c.prints))}`);
+        if (c.prints > 0) lines.push(`Matière des impressions liées : ${esc(fmtMoney(c.prints))}`);
         if (c.extras > 0) lines.push(`Matières ajoutées : ${esc(fmtMoney(c.extras))}`);
-        if (lines.length || c.total > 0) {
-          html = `${lines.join('<br>')}<div>Coût matière : <b>${esc(fmtMoney(c.total))}</b></div>`;
-          if (price != null && !Number.isNaN(price)) html += `<div>Prix de vente ${esc(fmtMoney(price))}, il reste <b>${esc(fmtMoney(price - c.total))}</b> après la matière</div>`;
+        if (pf.mc.hours > 0) lines.push(`Temps de machine : ${esc(fmtMoney(pf.mc.cost))} <small>(${esc(fmtNum(Math.round(pf.mc.hours * 10) / 10))} h${pf.mc.estimated ? ', planifié' : ''})</small>`);
+        if (pf.laborH > 0) lines.push(`Main-d’œuvre : ${esc(fmtMoney(pf.laborCost))} <small>(${esc(fmtNum(pf.laborH))} h × ${esc(fmtMoney(t.labor))})</small>`);
+        if (pf.cost > 0) {
+          html = `${lines.join('<br>')}<div class="cb-total">Coût total : <b>${esc(fmtMoney(pf.cost))}</b></div>`;
+          if (pf.price != null) {
+            html += `<div class="cb-margin ${pf.pct != null ? marginClass(pf.pct, pf.target) : ''}">Prix de vente ${esc(fmtMoney(pf.price))} : marge <b>${esc(fmtMoney(pf.margin))}</b>${pf.pct != null ? ` (<b>${esc(fmtNum(Math.round(pf.pct)))} %</b>)` : ''}</div>`;
+          }
+          if (pf.suggested != null) {
+            html += `<div class="cb-sugg">Prix conseillé pour ${esc(fmtNum(pf.target))} % de marge : <b>${esc(fmtMoney(pf.suggested))}</b> <button type="button" class="btn btn-small" data-use-price="${pf.suggested}">Utiliser ce prix</button></div>`;
+          }
         }
-        if (hours) html += `<small class="hint-line">Temps d’impression planifié : ${esc(hours)}</small>`;
+        if (pf.mc.hours > 0 && pf.mc.missing.length) html += `<small class="hint-line">Tarif horaire manquant pour : ${esc(pf.mc.missing.join(', '))}. <button type="button" class="linkbtn" data-act="tariffs">Régler les tarifs</button></small>`;
+        if (pf.laborRateMissing) html += `<small class="hint-line">Le tarif de la main-d’œuvre n’est pas réglé. <button type="button" class="linkbtn" data-act="tariffs">Régler les tarifs</button></small>`;
         if (c.missing.length) html += `<small class="hint-line">Prix manquant pour : ${esc(c.missing.join(', '))}</small>`;
+        if (pf.cost > 0 && !html.includes('data-act="tariffs"') && t.labor === 0 && pf.laborH === 0) html += '<small class="hint-line">Le temps de préparation et de finition compte aussi : indique-le plus haut pour une marge réaliste.</small>';
       }
       box.innerHTML = html;
       box.classList.toggle('hidden', !html);
@@ -2643,6 +3380,15 @@
       });
       const priceEl = $('#f_price_chf');
       if (priceEl) priceEl.addEventListener('input', refreshCost);
+      const laborEl2 = $('#f_labor_h');
+      if (laborEl2) laborEl2.addEventListener('input', refreshCost);
+      const costBox = $('#cost-box');
+      if (costBox) costBox.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-use-price]');
+        if (!b || !priceEl) return;
+        priceEl.value = b.dataset.usePrice;
+        refreshCost();
+      });
       const machEl = $('#f_machine_id');
       if (machEl && def.uses === 'print') machEl.addEventListener('change', refreshCost);
     }
@@ -3346,6 +4092,7 @@
     add('Tâches', state.tasks.filter((t) => hit(t.title, t.notes)).map((t) => ({ kind: 'task', id: t.id, main: t.title, sub: t.start_at ? fmtDateTime(t.start_at) : 'Sans date' })));
     add('Matières', state.materials.filter((m) => hit(m.name, m.notes)).map((m) => ({ kind: 'material', id: m.id, main: m.name, sub: `${fmtNum(m.quantity)} ${unitFor(m, m.quantity)} en stock` })));
     add('Bobines', state.spools.filter((s) => { const m = materialById(s.material_id); return hit(filTitle(m), m && m.name, s.label, s.location, s.supplier, s.notes); }).map((s) => ({ kind: 'spool', act: 'spool-detail', id: s.id, main: `${filTitle(materialById(s.material_id))}${s.label ? ` #${s.label}` : ''}`, sub: `${fmtNum(Math.round(spoolLeft(s)))} g${s.machine_id ? `, dans ${machineName(s.machine_id)}` : s.location ? `, ${s.location}` : ''}` })));
+    add('Fichiers 3D', state.library_files.filter((f) => hit(f.title, f.file_name, (f.tags || []).join(' '), f.notes)).map((f) => ({ kind: 'library', act: 'lib-open', id: f.id, main: f.title, sub: `${(f.ext || '').toUpperCase()} ${fmtSize(f.size)}${f.tags && f.tags.length ? `, ${f.tags.join(', ')}` : ''}` })));
     add('Modèles', state.print_templates.filter((t) => hit(t.name, t.notes)).map((t) => ({ kind: 'template', id: t.id, main: t.name, sub: `${fmtNum(t.duration_h)} h` })));
     add('Commentaires', state.comments.filter((c) => hit(c.body)).map((c) => { const o = state.orders.find((x) => x.id === c.order_id); return o ? { kind: 'order', id: o.id, main: c.body.length > 80 ? `${c.body.slice(0, 80)}…` : c.body, sub: `${profileName(c.created_by)} sur ${orderLabel(o)}` } : null; }).filter(Boolean));
     add('Fichiers', state.attachments.filter((f) => hit(f.name)).map((f) => {
@@ -3491,6 +4238,11 @@
       case 'trash-delete': deleteTrash(el.dataset.id); break;
       case 'maint-done': markMaintenanceDone(el.dataset.id); break;
       case 'srange': state.statsRange = Number(el.dataset.r); render(); break;
+      case 'tariffs': openTariffs(); break;
+      case 'lib-pick': pickLibraryFiles(); break;
+      case 'lib-open': openLibraryFile(el.dataset.id); break;
+      case 'lib-type': state.libType = el.dataset.t; render(); break;
+      case 'order-invoice': openInvoiceDraft(el.dataset.id); break;
       case 'fil-tab': state.filTab = el.dataset.tab; render(); break;
       case 'fil-filter': state.filFilter = el.dataset.f; render(); break;
       case 'spool-detail': openSpoolDetail(el.dataset.id); break;
@@ -3577,6 +4329,11 @@
       const box = $('#help-results');
       if (box) box.innerHTML = helpResultsHtml(state.helpQuery);
     }
+    if (e.target && e.target.id === 'lib-search') {
+      state.libQuery = e.target.value;
+      const box = $('#lib-results');
+      if (box) { box.innerHTML = libResultsHtml(); }
+    }
     if (e.target && e.target.id === 'fil-search') {
       state.filQuery = e.target.value;
       const box = $('#fil-results');
@@ -3584,6 +4341,7 @@
     }
   });
   document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'lib-tag') { state.libTag = e.target.value; render(); return; }
     if (e.target && e.target.id === 'fil-type') { state.filType = e.target.value; render(); return; }
     if (e.target && e.target.id === 'tag-filter') { state.orderFilter.tag = e.target.value; render(); }
   });
@@ -4039,5 +4797,5 @@
     }
   })();
 
-  window.__dayan = { labelData, openLabelDialog, scanPayload, qrSvg, handleScanLink, openScanned, needsDrying, filTitle, openWeigh, openSpoolDetail, billingExport, splitAddress, startTour, maybeOfferTour, openHelp, tourSteps: TOUR_STEPS, state, render, loadAll, computeReminders, checkReminders, prefs, purgeOldTrash, planJobs, handlePrinterStatus, liveOf, getPrinterCfg: () => printerCfg };
+  window.__dayan = { parseSTL, createStlViewer, uploadLibraryFiles, openLibraryFile, orderProfit, tariffs, openTariffs, openInvoiceDraft, labelData, openLabelDialog, scanPayload, qrSvg, handleScanLink, openScanned, needsDrying, filTitle, openWeigh, openSpoolDetail, billingExport, splitAddress, startTour, maybeOfferTour, openHelp, tourSteps: TOUR_STEPS, state, render, loadAll, computeReminders, checkReminders, prefs, purgeOldTrash, planJobs, handlePrinterStatus, liveOf, getPrinterCfg: () => printerCfg };
 })();
