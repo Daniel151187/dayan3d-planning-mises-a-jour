@@ -354,6 +354,27 @@ create table if not exists public.app_settings (
   updated_by uuid default auth.uid()
 );
 
+-- ---------- Lot 2.11.0 : bibliothèque de fichiers 3D partagés ----------
+-- les fichiers eux-mêmes sont dans l'espace privé « pieces-jointes » (dossier bibliotheque/) ;
+-- cette table garde leur fiche : titre, étiquettes, notes, dimensions, commande liée
+create table if not exists public.library_files (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  file_name text not null,
+  path text not null,
+  thumb_path text,
+  size bigint,
+  ext text,
+  tags text[] not null default '{}',
+  notes text,
+  dims jsonb,
+  order_id uuid references public.orders(id) on delete set null,
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists library_files_order_idx on public.library_files (order_id);
+
 -- mise à jour automatique de updated_at
 create or replace function public.touch_updated_at() returns trigger
 language plpgsql as $$
@@ -396,11 +417,11 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['orders','prints','tasks','availability','materials','clients','print_templates','spools','volunteer_hours','printer_status','app_settings'] loop
+  foreach t in array array['orders','prints','tasks','availability','materials','clients','print_templates','spools','volunteer_hours','printer_status','app_settings','library_files'] loop
     execute format('drop trigger if exists trg_touch on public.%I', t);
     execute format('create trigger trg_touch before update on public.%I for each row execute function public.touch_updated_at()', t);
   end loop;
-  foreach t in array array['orders','prints','tasks','availability','attachments','materials','comments','machine_blocks','clients','print_templates','maintenance_rules','spools','volunteer_hours'] loop
+  foreach t in array array['orders','prints','tasks','availability','attachments','materials','comments','machine_blocks','clients','print_templates','maintenance_rules','spools','volunteer_hours','library_files'] loop
     execute format('drop trigger if exists trg_log on public.%I', t);
     execute format('create trigger trg_log after insert or update or delete on public.%I for each row execute function public.log_change()', t);
   end loop;
@@ -705,7 +726,7 @@ create trigger trg_spool before insert or update on public.spools
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','materials','material_uses','comments','machine_blocks','clients','print_templates','maintenance_rules','spools','volunteer_hours','printer_status','app_settings'] loop
+  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','materials','material_uses','comments','machine_blocks','clients','print_templates','maintenance_rules','spools','volunteer_hours','printer_status','app_settings','library_files'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "equipe" on public.%I', t);
     execute format('create policy "equipe" on public.%I for all to authenticated using (true) with check (true)', t);
@@ -749,7 +770,7 @@ create policy "equipe fichiers" on storage.objects
 do $$
 declare t text;
 begin
-  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','history','materials','material_uses','stock_moves','comments','comment_reads','machine_blocks','clients','print_templates','maintenance_rules','trash','spools','volunteer_hours','printer_status','app_settings'] loop
+  foreach t in array array['profiles','machines','orders','prints','tasks','availability','attachments','history','materials','material_uses','stock_moves','comments','comment_reads','machine_blocks','clients','print_templates','maintenance_rules','trash','spools','volunteer_hours','printer_status','app_settings','library_files'] loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);
     exception when duplicate_object then null;

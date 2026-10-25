@@ -3,7 +3,7 @@
 // la sécurité repose sur les comptes et les règles d'accès de la base.
 window.CONFIG = {
   SUPABASE_URL: 'https://ufxuxonsnakmiwmnzmuc.supabase.co',
-  APP_VERSION: '2.10.0',
+  APP_VERSION: '2.11.0',
   SUPABASE_KEY: 'sb_publishable_ljc0Bj_1eW-MRbN6TrJcag_di7BqSCN',
   // Projet Supabase de l'application de facturation (envoi des clients). Clé publique : la sécurité repose sur le compte de facturation.
   BILLING_URL: 'https://uczoufwtgqnvhqavbngi.supabase.co',

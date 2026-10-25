@@ -50,7 +50,7 @@
     started: false,
     me: null,
     profiles: [], machines: [], orders: [], prints: [], tasks: [], availability: [], attachments: [], history: [],
-    materials: [], material_uses: [], stock_moves: [], comments: [], comment_reads: [], machine_blocks: [], clients: [], print_templates: [], maintenance_rules: [], trash: [], spools: [], volunteer_hours: [], printer_status: [], app_settings: [], volRange: 'month', filTab: 'spools', filFilter: 'all', filType: '', filQuery: '', helpQuery: '', helpOpen: '', statsRange: 30, orderFilter: { urgent: false, tag: '' }, openOrderId: null,
+    materials: [], material_uses: [], stock_moves: [], comments: [], comment_reads: [], machine_blocks: [], clients: [], print_templates: [], maintenance_rules: [], trash: [], spools: [], volunteer_hours: [], printer_status: [], app_settings: [], library_files: [], libType: 'all', libTag: '', libQuery: '', libBusy: null, volRange: 'month', filTab: 'spools', filFilter: 'all', filType: '', filQuery: '', helpQuery: '', helpOpen: '', statsRange: 30, orderFilter: { urgent: false, tag: '' }, openOrderId: null,
     view: 'today',
     calMode: 'month',
     cursor: startOfDay(new Date()),
@@ -61,7 +61,7 @@
     modalRefresh: null
   };
 
-  const TABLES = ['profiles', 'machines', 'orders', 'prints', 'tasks', 'availability', 'attachments', 'history', 'materials', 'material_uses', 'stock_moves', 'comments', 'comment_reads', 'machine_blocks', 'clients', 'print_templates', 'maintenance_rules', 'trash', 'spools', 'volunteer_hours', 'printer_status', 'app_settings'];
+  const TABLES = ['profiles', 'machines', 'orders', 'prints', 'tasks', 'availability', 'attachments', 'history', 'materials', 'material_uses', 'stock_moves', 'comments', 'comment_reads', 'machine_blocks', 'clients', 'print_templates', 'maintenance_rules', 'trash', 'spools', 'volunteer_hours', 'printer_status', 'app_settings', 'library_files'];
 
   const profileName = (id) => state.profiles.find((p) => p.id === id)?.name || 'Quelqu’un';
   const machineName = (id) => state.machines.find((m) => m.id === id)?.name || 'Sans machine';
@@ -432,6 +432,7 @@
     history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     stats: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
+    library: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13l3 1.5L15 13M12 14.5V18"/>',
     filaments: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/>',
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.1 1-1.1 1.8M12 17h.01"/>',
     atelier: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
@@ -449,6 +450,7 @@
     ['clients', 'Clients'],
     ['stock', 'Stock'],
     ['filaments', 'Filaments'],
+    ['library', 'Fichiers 3D'],
     ['tasks', 'Tâches'],
     ['team', 'Équipe'],
     ['volunteers', 'Bénévolat'],
@@ -546,6 +548,9 @@
           ${[['month', 'Ce mois'], ['quarter', '3 mois'], ['year', 'Cette année']].map(([k, l]) => `<button type="button" data-act="vrange" data-r="${k}" aria-pressed="${state.volRange === k}">${l}</button>`).join('')}
         </div><span class="grow hint">Heures données par chaque membre, avec ou sans compte</span>
         <button class="btn btn-primary" type="button" data-act="newitem" data-kind="volunteer">+ Heures</button>`;
+    } else if (v === 'library') {
+      html = `<h2>Fichiers 3D</h2><span class="grow hint">Bibliothèque partagée par toute l’équipe</span>
+        <button class="btn btn-primary" type="button" data-act="lib-pick">+ Fichiers</button>`;
     } else if (v === 'filaments') {
       html = `<h2>Filaments</h2>
         <div class="seg" role="group" aria-label="Affichage">${[['spools', 'Bobines'], ['catalog', 'Catalogue']].map(([k, l]) => `<button type="button" data-act="fil-tab" data-tab="${k}" aria-pressed="${state.filTab === k}">${l}</button>`).join('')}</div>
@@ -573,7 +578,7 @@
     const st = view.scrollTop;
     renderNav();
     renderTop();
-    const html = { filaments: filamentsHtml, help: helpHtml, atelier: atelierHtml, volunteers: volunteersHtml, trash: trashHtml, stats: statsHtml, today: todayHtml, calendar: calendarHtml, machines: machinesHtml, orders: ordersHtml, clients: clientsHtml, stock: stockHtml, tasks: tasksHtml, team: teamHtml, history: historyHtml }[state.view]();
+    const html = { library: libraryHtml, filaments: filamentsHtml, help: helpHtml, atelier: atelierHtml, volunteers: volunteersHtml, trash: trashHtml, stats: statsHtml, today: todayHtml, calendar: calendarHtml, machines: machinesHtml, orders: ordersHtml, clients: clientsHtml, stock: stockHtml, tasks: tasksHtml, team: teamHtml, history: historyHtml }[state.view]();
     view.innerHTML = html;
     view.scrollTop = st;
   }
@@ -939,6 +944,15 @@
         '- Note les **matières utilisées** : le stock baisse quand l’impression passe à Terminée ou Échec.',
         '- **+ Blocage** réserve une machine (entretien, panne). Si une impression en chevauche une autre ou un blocage, l’appli te prévient et la frise l’entoure de rouge.',
         '- **+ Modèle** enregistre une pièce refaite souvent (machine, durée, matières) ; **Créer l’impression** la replanifie en un clic. Dans une impression existante : **Enregistrer comme modèle**.'] },
+    { id: 'library', g: 2, t: 'La bibliothèque de fichiers 3D', k: 'stl 3mf gcode fichier partager bibliotheque apercu 3d dimensions telecharger etiquette',
+      b: ['Page **Fichiers 3D** : tous les fichiers de l’équipe au même endroit, sans passer par une commande.',
+        '- **Ajouter** : glisse des fichiers dans le cadre (ordinateur) ou touche **+ Fichiers** (téléphone, tablette). STL, 3MF, G-code, STEP, OBJ, ZIP… jusqu’à 50 Mo par fichier. Un fichier déjà présent (même nom, même taille) est ignoré.',
+        '- Pour un **STL**, l’appli calcule les **dimensions** (largeur × profondeur × hauteur en mm), le **volume** et fabrique une **vignette**. Les dimensions supposent un STL en millimètres.',
+        '- **Un clic sur un fichier** ouvre sa fiche : aperçu 3D (glisse pour tourner, molette ou pincement pour zoomer), titre, **étiquettes**, notes (version, réglages), **commande liée**.',
+        '- **Télécharger** récupère le fichier d’origine. **Supprimer** l’enlève pour toute l’équipe, sans retour possible.',
+        '- Filtres par type et par étiquette, et recherche par nom, étiquette ou note. Ctrl + K retrouve aussi les fichiers.',
+        '- Un fichier lié à une commande apparaît dans la fiche de cette commande, section « Fichiers 3D de la bibliothèque ».',
+        'Les fichiers sont stockés dans ton Supabase (espace privé) : seuls les comptes de l’équipe y accèdent. L’offre gratuite de Supabase offre 1 Go de stockage au total.'] },
     { id: 'planner', g: 2, t: 'La planification automatique', k: 'planifier automatique echeance creneau machine',
       b: ['**Planifier** (page Machines) ou **Planifier les impressions** (dans une commande).',
         '- Indique chaque pièce : nom, durée en heures, nombre d’exemplaires, machine imposée ou non. Tu peux aussi partir d’un modèle.',
@@ -1043,7 +1057,7 @@
         '- Sur un téléphone en veille, les données se rechargent quand tu rouvres l’appli.',
         '- En cas de doute, ferme et rouvre l’application.'] }
   ];
-  const HELP_BY_VIEW = { today: 'today', atelier: 'atelier', calendar: 'calendar', machines: 'machines', orders: 'orders', clients: 'clients', stock: 'stock', filaments: 'filaments', tasks: 'tasks', team: 'team', volunteers: 'volunteers', stats: 'stats', history: 'history_trash', trash: 'history_trash', help: 'start' };
+  const HELP_BY_VIEW = { today: 'today', atelier: 'atelier', calendar: 'calendar', machines: 'machines', orders: 'orders', clients: 'clients', stock: 'stock', filaments: 'filaments', library: 'library', tasks: 'tasks', team: 'team', volunteers: 'volunteers', stats: 'stats', history: 'history_trash', trash: 'history_trash', help: 'start' };
 
   const helpMd = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   function helpBody(lines) {
@@ -2098,6 +2112,387 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /*  Fichiers 3D : bibliothèque partagée, aperçu des STL                */
+  /* ------------------------------------------------------------------ */
+  const LIB_ACCEPT = '.stl,.3mf,.obj,.step,.stp,.gcode,.bgcode,.scad,.zip,.png,.jpg,.jpeg';
+  const LIB_MAX = 50 * 1024 * 1024;           // limite de l'offre Supabase : 50 Mo par fichier
+  const LIB_PREVIEW_MAX_TRIS = 1000000;       // au-delà, pas d'aperçu (pour ne pas bloquer un téléphone)
+  const LIB_KIND_FR = { all: 'Tous', stl: 'STL', '3mf': '3MF', gcode: 'G-code', other: 'Autres' };
+  const extOf = (n) => { const m = /\.([a-z0-9]+)$/i.exec(String(n || '')); return m ? m[1].toLowerCase() : ''; };
+  const libKind = (e) => (e === 'stl' ? 'stl' : e === '3mf' ? '3mf' : (e === 'gcode' || e === 'bgcode') ? 'gcode' : 'other');
+  const safeName = (n) => String(n).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]+/g, '_');
+  const uid = () => (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const r1 = (x) => Math.round(Number(x) * 10) / 10;
+  const readBuffer = (file) => (file.arrayBuffer ? file.arrayBuffer() : new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsArrayBuffer(file); }));
+  const libDimsText = (d) => (d && d.x != null ? `${fmtNum(d.x)} × ${fmtNum(d.y)} × ${fmtNum(d.z)} mm` : '');
+
+  // lecture d'un fichier STL (binaire ou texte) : triangles, dimensions et volume
+  function parseSTL(buf) {
+    const len = buf.byteLength;
+    const dv = new DataView(buf);
+    const n = len >= 84 ? dv.getUint32(80, true) : 0;
+    let head = '';
+    const hb = new Uint8Array(buf, 0, Math.min(len, 300));
+    for (let i = 0; i < hb.length; i++) head += String.fromCharCode(hb[i]);
+    const looksAscii = /^\s*solid/i.test(head) && /facet|vertex|endsolid/i.test(head);
+    let pos = null;
+    if (n > 0 && 84 + n * 50 <= len && (84 + n * 50 === len || !looksAscii)) {
+      pos = new Float32Array(n * 9);
+      let o = 84;
+      const littleEndian = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+      if (littleEndian) {
+        // appareils usuels : on recopie les 36 octets de chaque triangle (bien plus rapide que 9 lectures)
+        const src = new Uint8Array(buf);
+        const dst = new Uint8Array(pos.buffer);
+        for (let i = 0, d = 0; i < n; i++, o += 50) { for (let k = 0; k < 36; k++) dst[d++] = src[o + 12 + k]; }
+      } else {
+        for (let i = 0; i < n; i++, o += 50) for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + 12 + k * 4, true);
+      }
+    } else if (looksAscii || /vertex/i.test(head)) {
+      let txt = '';
+      if (typeof TextDecoder !== 'undefined') txt = new TextDecoder().decode(buf);
+      else { const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 8192) txt += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); }
+      const re = /vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g;
+      const arr = [];
+      let m;
+      while ((m = re.exec(txt))) arr.push(+m[1], +m[2], +m[3]);
+      const t = Math.floor(arr.length / 9);
+      pos = new Float32Array(t * 9);
+      for (let i = 0; i < t * 9; i++) pos[i] = arr[i];
+    }
+    if (!pos || pos.length < 9) throw new Error('fichier STL vide ou illisible');
+    const tris = pos.length / 9;
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    let vol = 0;
+    for (let i = 0; i < tris; i++) {
+      const o = i * 9;
+      for (let k = 0; k < 9; k++) {
+        const v = pos[o + k];
+        if (!Number.isFinite(v)) throw new Error('fichier STL corrompu');
+        const ax = k % 3;
+        if (v < min[ax]) min[ax] = v;
+        if (v > max[ax]) max[ax] = v;
+      }
+      vol += (pos[o] * (pos[o + 4] * pos[o + 8] - pos[o + 5] * pos[o + 7]) - pos[o + 1] * (pos[o + 3] * pos[o + 8] - pos[o + 5] * pos[o + 6]) + pos[o + 2] * (pos[o + 3] * pos[o + 7] - pos[o + 4] * pos[o + 6])) / 6;
+    }
+    return { positions: pos, tris, min, max, dims: { x: max[0] - min[0], y: max[1] - min[1], z: max[2] - min[2] }, volume: Math.abs(vol) };
+  }
+
+  // petit visualiseur 3D (WebGL) : tourner au doigt ou à la souris, zoomer à la molette ou en pinçant
+  function createStlViewer(canvas, mesh) {
+    let gl = null;
+    try { gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true }) || canvas.getContext('experimental-webgl'); } catch (e) { gl = null; }
+    if (!gl) return null;
+    const T = mesh.tris;
+    const c = [(mesh.min[0] + mesh.max[0]) / 2, (mesh.min[1] + mesh.max[1]) / 2, (mesh.min[2] + mesh.max[2]) / 2];
+    const rad = Math.max(1e-6, 0.5 * Math.hypot(mesh.dims.x, mesh.dims.y, mesh.dims.z));
+    const P = new Float32Array(T * 9);
+    const N = new Float32Array(T * 9);
+    for (let i = 0; i < T; i++) {
+      const o = i * 9;
+      for (let k = 0; k < 9; k++) P[o + k] = (mesh.positions[o + k] - c[k % 3]) / rad;
+      const ux = P[o + 3] - P[o], uy = P[o + 4] - P[o + 1], uz = P[o + 5] - P[o + 2];
+      const vx = P[o + 6] - P[o], vy = P[o + 7] - P[o + 1], vz = P[o + 8] - P[o + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nx /= l; ny /= l; nz /= l;
+      for (let v = 0; v < 3; v++) { N[o + v * 3] = nx; N[o + v * 3 + 1] = ny; N[o + v * 3 + 2] = nz; }
+    }
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec3 aP; attribute vec3 aN; uniform mat4 uM; varying vec3 vN; void main(){ vN = aN; gl_Position = uM * vec4(aP, 1.0); }'));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, 'precision mediump float; varying vec3 vN; uniform vec3 uL; void main(){ float d = abs(dot(normalize(vN), uL)); float s = pow(max(dot(reflect(-uL, normalize(vN)), uL), 0.0), 8.0) * 0.08; vec3 col = vec3(0.80,0.82,0.86) * (0.28 + 0.72 * d) + s; gl_FragColor = vec4(col, 1.0); }'));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+    const buf = (arr, name) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW); const l = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 0, 0); return b; };
+    const bufs = [buf(P, 'aP'), buf(N, 'aN')];
+    const uM = gl.getUniformLocation(prog, 'uM');
+    const uL = gl.getUniformLocation(prog, 'uL');
+    let yaw = -0.6, pitch = 0.45, dist = 2.8, dead = false;
+    const draw = () => {
+      if (dead) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(2, Math.round((canvas.clientWidth || canvas.width) * dpr));
+      const h = Math.max(2, Math.round((canvas.clientHeight || canvas.height) * dpr));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0.106, 0.11, 0.125, 1);
+      gl.enable(gl.DEPTH_TEST);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      // caméra qui tourne autour de l'objet, Z vers le haut (comme dans les trancheurs)
+      const ex = dist * Math.cos(pitch) * Math.cos(yaw), ey = dist * Math.cos(pitch) * Math.sin(yaw), ez = dist * Math.sin(pitch);
+      const f = [-ex / dist, -ey / dist, -ez / dist];
+      let s = [f[1] * 1 - f[2] * 0, f[2] * 0 - f[0] * 1, 0];
+      const sl = Math.hypot(s[0], s[1], s[2]) || 1; s = [s[0] / sl, s[1] / sl, s[2] / sl];
+      const u = [s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0]];
+      const view = [s[0], u[0], -f[0], 0, s[1], u[1], -f[1], 0, s[2], u[2], -f[2], 0, -(s[0] * ex + s[1] * ey + s[2] * ez), -(u[0] * ex + u[1] * ey + u[2] * ez), (f[0] * ex + f[1] * ey + f[2] * ez), 1];
+      const fy = 1 / Math.tan(0.4), asp = w / h, nr = 0.1, fr = 20;
+      const proj = [fy / asp, 0, 0, 0, 0, fy, 0, 0, 0, 0, (fr + nr) / (nr - fr), -1, 0, 0, (2 * fr * nr) / (nr - fr), 0];
+      const m = new Float32Array(16);
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let v = 0; for (let k = 0; k < 4; k++) v += proj[k * 4 + j] * view[i * 4 + k]; m[i * 4 + j] = v; }
+      gl.useProgram(prog);
+      gl.uniformMatrix4fv(uM, false, m);
+      const lx = -f[0] + 0.35 * s[0] + 0.5 * u[0], ly = -f[1] + 0.35 * s[1] + 0.5 * u[1], lz = -f[2] + 0.35 * s[2] + 0.5 * u[2];
+      const ll = Math.hypot(lx, ly, lz) || 1;
+      gl.uniform3f(uL, lx / ll, ly / ll, lz / ll);
+      bufs.forEach((b, i) => { gl.bindBuffer(gl.ARRAY_BUFFER, b); const l = gl.getAttribLocation(prog, i ? 'aN' : 'aP'); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, 3, gl.FLOAT, false, 0, 0); });
+      gl.drawArrays(gl.TRIANGLES, 0, T * 3);
+    };
+    const pts = new Map();
+    let pinch = 0;
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('pointerdown', (e) => { pts.set(e.pointerId, [e.clientX, e.clientY]); try { canvas.setPointerCapture(e.pointerId); } catch (x) { /* ignoré */ } pinch = 0; });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      const prev = pts.get(e.pointerId);
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 1) {
+        yaw -= (e.clientX - prev[0]) * 0.01;
+        pitch = Math.max(-1.45, Math.min(1.45, pitch + (e.clientY - prev[1]) * 0.01));
+      } else if (pts.size === 2) {
+        const [p, q] = [...pts.values()];
+        const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+        if (pinch) dist = Math.max(1.4, Math.min(8, dist * (pinch / d)));
+        pinch = d;
+      }
+      draw();
+    });
+    const up = (e) => { pts.delete(e.pointerId); pinch = 0; };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); dist = Math.max(1.4, Math.min(8, dist * Math.exp(e.deltaY * 0.0012))); draw(); }, { passive: false });
+    return {
+      draw,
+      setAngles: (y, p) => { yaw = y; pitch = p; },
+      snapshot: () => new Promise((res) => canvas.toBlob(res, 'image/png')),
+      destroy: () => { dead = true; try { const ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } catch (e) { /* ignoré */ } }
+    };
+  }
+
+  // vignette de la bibliothèque : l'objet vu de trois quarts, sur le fond de l'appli
+  async function makeThumb(mesh) {
+    const cv = document.createElement('canvas');
+    cv.width = 360; cv.height = 270;
+    const v = createStlViewer(cv, mesh);
+    if (!v) return null;
+    v.setAngles(-0.6, 0.45);
+    v.draw();
+    const blob = await v.snapshot();
+    v.destroy();
+    return blob;
+  }
+
+  /* ---------- envoi de fichiers ---------- */
+  async function uploadLibraryFiles(files) {
+    const list = [...files];
+    const res = { ok: 0, skipped: [], failed: [] };
+    if (!list.length) return res;
+    state.libBusy = { done: 0, total: list.length, name: '' };
+    for (const f of list) {
+      state.libBusy.name = f.name;
+      if (state.view === 'library') render();
+      try {
+        const ext = extOf(f.name);
+        if (f.size > LIB_MAX) throw new Error('plus grand que 50 Mo');
+        if (state.library_files.some((x) => x.file_name === f.name && Number(x.size) === f.size)) { res.skipped.push(f.name); state.libBusy.done += 1; continue; }
+        let dims = null;
+        let thumb = null;
+        if (ext === 'stl') {
+          try {
+            const mesh = parseSTL(await readBuffer(f));
+            dims = { x: r1(mesh.dims.x), y: r1(mesh.dims.y), z: r1(mesh.dims.z), tris: mesh.tris, vol: Math.round(mesh.volume / 10) / 100 };
+            if (mesh.tris <= LIB_PREVIEW_MAX_TRIS) thumb = await makeThumb(mesh);
+          } catch (e) { /* le fichier est envoyé quand même, sans dimensions ni vignette */ }
+        }
+        const id = uid();
+        const path = `bibliotheque/${id}/${safeName(f.name)}`;
+        const up = await sb.storage.from(BUCKET).upload(path, f, { contentType: f.type || 'application/octet-stream' });
+        if (up.error) throw up.error;
+        let thumbPath = null;
+        if (thumb) {
+          const tp = `bibliotheque/${id}/apercu.png`;
+          const t = await sb.storage.from(BUCKET).upload(tp, thumb, { contentType: 'image/png' });
+          if (!t.error) thumbPath = tp;
+        }
+        const ins = await sb.from('library_files').insert({ title: f.name.replace(/\.[^.]+$/, ''), file_name: f.name, path, thumb_path: thumbPath, size: f.size, ext, tags: [], dims });
+        if (ins.error) { await sb.storage.from(BUCKET).remove([path, ...(thumbPath ? [thumbPath] : [])]); throw ins.error; }
+        res.ok += 1;
+      } catch (e) { res.failed.push(`${f.name} (${e && e.message ? e.message : e})`); }
+      state.libBusy.done += 1;
+    }
+    state.libBusy = null;
+    await loadTable('library_files');
+    render();
+    const parts = [];
+    if (res.ok) parts.push(`${res.ok} fichier${res.ok > 1 ? 's' : ''} ajouté${res.ok > 1 ? 's' : ''}`);
+    if (res.skipped.length) parts.push(`${res.skipped.length} déjà présent${res.skipped.length > 1 ? 's' : ''} (ignoré${res.skipped.length > 1 ? 's' : ''})`);
+    if (res.failed.length) parts.push(`${res.failed.length} refusé${res.failed.length > 1 ? 's' : ''} : ${res.failed.join(' ; ')}`);
+    toast(parts.join(', ') || 'Rien à envoyer', res.failed.length > 0 && !res.ok);
+    return res;
+  }
+  function pickLibraryFiles() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.multiple = true; inp.accept = LIB_ACCEPT;
+    inp.addEventListener('change', () => { if (inp.files && inp.files.length) uploadLibraryFiles(inp.files); });
+    inp.click();
+  }
+  // glisser-déposer sur la page « Fichiers 3D »
+  document.addEventListener('dragover', (e) => { if (state.started && state.view === 'library' && e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files')) { e.preventDefault(); const z = $('#lib-drop'); if (z) z.classList.add('over'); } });
+  document.addEventListener('dragleave', () => { const z = $('#lib-drop'); if (z) z.classList.remove('over'); });
+  document.addEventListener('drop', (e) => {
+    if (!state.started || state.view !== 'library' || !e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    const z = $('#lib-drop'); if (z) z.classList.remove('over');
+    uploadLibraryFiles(e.dataTransfer.files);
+  });
+
+  /* ---------- la page ---------- */
+  const libThumbTried = new Set();
+  function libFiltered() {
+    const q = norm(state.libQuery);
+    return state.library_files.filter((f) => (state.libType === 'all' || libKind(f.ext) === state.libType)
+      && (!state.libTag || (f.tags || []).includes(state.libTag))
+      && (!q || norm([f.title, f.file_name, (f.tags || []).join(' '), f.notes].filter(Boolean).join(' ')).includes(q)))
+      .sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+  }
+  function libCard(f) {
+    const th = f.thumb_path && photoCache.get(f.thumb_path);
+    const order = f.order_id ? state.orders.find((o) => o.id === f.order_id) : null;
+    const who = (state.profiles.find((p) => p.id === f.created_by) || {}).name;
+    return `<article class="lib-card"><button type="button" class="lib-thumb" data-act="lib-open" data-id="${f.id}" aria-label="Ouvrir ${esc(f.title)}">${th ? `<img src="${esc(th.url)}" alt="">` : `<span class="lib-ext">${esc((f.ext || 'fichier').toUpperCase())}</span>`}</button>
+      <div class="lib-body"><b class="lib-title">${esc(f.title)}</b>
+        <small class="lib-file">${esc(f.file_name)}</small>
+        <div class="lib-meta">${esc([fmtSize(f.size), libDimsText(f.dims)].filter(Boolean).join(' · '))}</div>
+        <div class="lib-tags">${(f.tags || []).map((t) => `<span class="tag soft">${esc(t)}</span>`).join('')}${order ? `<span class="tag" title="Commande liée">${esc(orderLabel(order))}</span>` : ''}</div>
+        <small class="lib-by">${esc(who || '')}${who ? ', ' : ''}${esc(fmtShort(new Date(f.created_at)))}</small></div></article>`;
+  }
+  function libResultsHtml() {
+    const list = libFiltered();
+    if (!state.library_files.length) return '<div class="empty">La bibliothèque est vide. Glisse tes fichiers STL dans le cadre ci-dessus, ou touche « + Fichiers ».</div>';
+    if (!list.length) return '<div class="empty">Aucun fichier ne correspond à ces filtres.</div>';
+    return `<div class="lib-grid">${list.map(libCard).join('')}</div>`;
+  }
+  function libraryHtml() {
+    const all = state.library_files;
+    const counts = { all: all.length, stl: 0, '3mf': 0, gcode: 0, other: 0 };
+    all.forEach((f) => { counts[libKind(f.ext)] += 1; });
+    const tags = [...new Set(all.flatMap((f) => f.tags || []))].sort((x, y) => x.localeCompare(y, 'fr'));
+    const used = all.reduce((s, f) => s + Number(f.size || 0), 0);
+    const busy = state.libBusy;
+    // vignettes : liens temporaires demandés une fois, puis on réaffiche
+    const need = all.map((f) => f.thumb_path).filter((p) => p && !photoCache.has(p) && !libThumbTried.has(p));
+    if (need.length) { need.forEach((p) => libThumbTried.add(p)); signedUrls(need).then(() => { if (state.view === 'library') render(); }); }
+    return `<div class="lib-page">
+      ${busy ? `<div class="bx-plan" role="status">Envoi en cours : ${busy.done} sur ${busy.total}${busy.name ? ` (${esc(busy.name)})` : ''}…</div>` : ''}
+      <div class="lib-drop" id="lib-drop"><b>Glisse tes fichiers ici</b><span>STL, 3MF, G-code, STEP, OBJ… jusqu’à 50 Mo par fichier. Tout le monde les retrouve ici.</span></div>
+      <div class="fil-filters">
+        <div class="fchips" role="group" aria-label="Type de fichier">${Object.keys(LIB_KIND_FR).map((k) => `<button type="button" class="fchip" data-act="lib-type" data-t="${k}" aria-pressed="${state.libType === k}">${LIB_KIND_FR[k]}${counts[k] ? ` <small>${counts[k]}</small>` : ''}</button>`).join('')}</div>
+        <select id="lib-tag" aria-label="Étiquette"><option value="">Toutes les étiquettes</option>${tags.map((t) => `<option value="${esc(t)}" ${state.libTag === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+        <input id="lib-search" type="search" placeholder="Nom, étiquette, note…" value="${esc(state.libQuery)}" autocomplete="off">
+      </div>
+      <div id="lib-results">${libResultsHtml()}</div>
+      <small class="hint-line">${all.length} fichier${all.length > 1 ? 's' : ''}, ${esc(fmtSize(used) || '0 Ko')} dans la bibliothèque. Repère : l’offre gratuite de Supabase offre 1 Go de stockage au total (photos et pièces jointes comprises).</small>
+    </div>`;
+  }
+
+  // fichiers de la bibliothèque liés à une commande (dans la fiche de la commande)
+  function libLinkedHtml(rec) {
+    const linked = state.library_files.filter((f) => f.order_id === rec.id);
+    return `<div class="files lib-box"><h4>Fichiers 3D de la bibliothèque</h4>
+      ${linked.length ? linked.map((f) => `<button type="button" class="lib-link" data-act="lib-open" data-id="${f.id}">${esc(f.title)} <small>${esc((f.ext || '').toUpperCase())} ${esc(fmtSize(f.size))}</small></button>`).join('') : '<small class="hint-line">Aucun fichier lié. Dans la page « Fichiers 3D », ouvre un fichier et choisis cette commande pour le lier.</small>'}</div>`;
+  }
+
+  /* ---------- la fiche d'un fichier ---------- */
+  function openLibraryFile(id) {
+    const f = state.library_files.find((x) => x.id === id);
+    if (!f) return;
+    if ($('#modal-root .modal.search')) closeModal();
+    const kind = libKind(f.ext);
+    const who = (state.profiles.find((p) => p.id === f.created_by) || {}).name;
+    const d = f.dims || {};
+    const orders = state.orders.slice().sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+    const row = (l, v) => (v ? `<div class="d-row"><span>${esc(l)}</span><b>${esc(v)}</b></div>` : '');
+    $('#layer-root').innerHTML = `
+      <div class="overlay layer" id="lf-overlay">
+        <div class="modal lib-detail" role="dialog" aria-modal="true" aria-label="Fiche du fichier">
+          <div class="modal-head"><h3>${esc(f.title)}</h3><button type="button" class="btn btn-quiet icon-btn" data-lfclose aria-label="Fermer">✕</button></div>
+          <div class="modal-body">
+            <div class="lf-grid">
+              <div class="lf-view">${kind === 'stl' ? '<canvas id="lf-canvas" class="lf-canvas" aria-label="Aperçu 3D"></canvas><div class="lf-note" id="lf-note">Chargement de l’aperçu…</div>' : `<div class="lf-bigext">${esc((f.ext || 'fichier').toUpperCase())}</div>`}
+                ${kind === 'stl' ? '<small class="hint-line">Glisse pour tourner, molette ou pincement pour zoomer.</small>' : ''}</div>
+              <div class="lf-info">
+                ${row('Fichier', f.file_name)}${row('Taille', fmtSize(f.size))}
+                ${row('Dimensions', libDimsText(d))}${row('Volume', d.vol != null ? `${fmtNum(d.vol)} cm³` : '')}${row('Triangles', d.tris != null ? fmtNum(d.tris) : '')}
+                ${row('Ajouté par', [who, fmtDateTime(f.created_at)].filter(Boolean).join(', '))}
+                <label class="field"><span>Titre</span><input id="lf-title" value="${esc(f.title)}"></label>
+                <label class="field"><span>Étiquettes (séparées par des virgules)</span><input id="lf-tags" value="${esc((f.tags || []).join(', '))}" placeholder="support, capteur, v2"></label>
+                <label class="field"><span>Commande liée</span><select id="lf-order"><option value="">Aucune</option>${orders.map((o) => `<option value="${o.id}" ${f.order_id === o.id ? 'selected' : ''}>${esc(orderLabel(o))}</option>`).join('')}</select></label>
+                <label class="field"><span>Notes (version, réglages, particularités)</span><textarea id="lf-notes" rows="3">${esc(f.notes || '')}</textarea></label>
+                <p class="form-error" id="lf-error" role="alert"></p>
+              </div>
+            </div>
+          </div>
+          <div class="modal-foot"><button type="button" class="btn" id="lf-download">Télécharger</button><button type="button" class="btn btn-quiet" id="lf-delete">Supprimer</button><span class="grow"></span>
+            <button type="button" class="btn" data-lfclose>Fermer</button><button type="button" class="btn btn-primary" id="lf-save">Enregistrer</button></div>
+        </div>
+      </div>`;
+    let viewer = null;
+    let closed = false;
+    const close = () => { closed = true; if (viewer) viewer.destroy(); $('#layer-root').innerHTML = ''; };
+    const ov = $('#lf-overlay');
+    ov.querySelectorAll('[data-lfclose]').forEach((b) => b.addEventListener('click', close));
+    ov.addEventListener('mousedown', (e) => { if (e.target.id === 'lf-overlay') close(); });
+    $('#lf-download').addEventListener('click', async () => {
+      const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(f.path, 600, { download: f.file_name });
+      if (error) { toast(`Téléchargement impossible : ${error.message}`, true); return; }
+      window.open(data.signedUrl, '_blank');
+    });
+    $('#lf-save').addEventListener('click', async () => {
+      const err = $('#lf-error');
+      err.textContent = '';
+      const title = $('#lf-title').value.trim();
+      if (!title) { err.textContent = 'Le titre ne peut pas être vide.'; return; }
+      const seen = new Set();
+      const tags = $('#lf-tags').value.split(/[,;]/).map((t) => t.trim()).filter((t) => { const k = norm(t); if (!t || seen.has(k)) return false; seen.add(k); return true; });
+      const { error } = await sb.from('library_files').update({ title, tags, notes: $('#lf-notes').value.trim() || null, order_id: $('#lf-order').value || null }).eq('id', f.id);
+      if (error) { err.textContent = `Enregistrement impossible : ${error.message}`; return; }
+      await loadTable('library_files');
+      close();
+      render();
+      toast('Fichier enregistré');
+    });
+    $('#lf-delete').addEventListener('click', async () => {
+      if (!window.confirm(`Supprimer définitivement « ${f.title} » de la bibliothèque pour toute l’équipe ? C’est irréversible.`)) return;
+      await sb.storage.from(BUCKET).remove([f.path, ...(f.thumb_path ? [f.thumb_path] : [])]);
+      const { error } = await sb.from('library_files').delete().eq('id', f.id);
+      if (error) { toast(`Suppression impossible : ${error.message}`, true); return; }
+      await loadTable('library_files');
+      close();
+      render();
+      toast('Fichier supprimé');
+    });
+    if (kind === 'stl') {
+      (async () => {
+        const note = (t) => { const n = $('#lf-note'); if (n && !closed) { n.textContent = t; n.classList.toggle('hidden', !t); } };
+        try {
+          const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(f.path, 600);
+          if (error) throw error;
+          const res = await fetch(data.signedUrl);
+          if (!res.ok) throw new Error(`réponse ${res.status}`);
+          const mesh = parseSTL(await res.arrayBuffer());
+          if (closed) return;
+          if (mesh.tris > LIB_PREVIEW_MAX_TRIS) { note(`Aperçu non disponible : ce fichier est très détaillé (${fmtNum(mesh.tris)} triangles). Le téléchargement fonctionne.`); return; }
+          viewer = createStlViewer($('#lf-canvas'), mesh);
+          if (!viewer) { note('Aperçu 3D indisponible sur cet appareil. Le téléchargement fonctionne.'); return; }
+          note('');
+          viewer.draw();
+        } catch (e) { note(`Aperçu indisponible (${e && e.message ? e.message : e}). Le téléchargement fonctionne.`); }
+      })();
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
   /*  Vue : stock                                                        */
   /* ------------------------------------------------------------------ */
   function stockRow(m) {
@@ -2474,7 +2869,7 @@
   const FIELD_FR = {
     status: 'statut', due_date: 'échéance', price_chf: 'prix', title: 'titre', client: 'client', notes: 'notes',
     start_at: 'début', end_at: 'fin', machine_id: 'machine', order_id: 'commande', assignee: 'responsable',
-    done: 'terminée', kind: 'type', kind: 'type', source: 'origine', stripe_session_id: 'paiement Stripe', member: 'membre', day: 'date', hours: 'heures', activity: 'activité', remaining_g: 'reste (g)', hourly_rate: 'tarif horaire (CHF/h)', labor_h: 'main-d’œuvre (h)', billing_invoice_number: 'facture', billed_at: 'facturée le', brand: 'marque', filament_type: 'matière', color_name: 'couleur', color_hex: 'teinte', diameter: 'diamètre (mm)', nozzle_min: 'buse min (°C)', nozzle_max: 'buse max (°C)', bed_c: 'plateau (°C)', dry_c: 'séchage (°C)', dry_h: 'séchage (h)', tare_g: 'poids à vide (g)', price_chf: 'prix payé', purchased_at: 'acheté le', supplier: 'fournisseur', location: 'emplacement', opened_at: 'ouverte le', dried_at: 'séchée le', dry_storage: 'stockée au sec', initial_g: 'poids neuf (g)', alert_g: 'seuil d’alerte (g)', label: 'nom', every_h: 'tous les (h)', last_done_at: 'dernier entretien', fail_reason: 'cause de l’échec', done_at: 'terminée le', priority: 'priorité', tags: 'étiquettes', client_id: 'fiche client', duration_h: 'durée (h)', phone: 'téléphone', email: 'e-mail', address: 'adresse', reason: 'raison', reorder_qty: 'quantité à commander', quantity: 'quantité en stock', min_quantity: 'seuil d’alerte', cost_chf: 'prix payé', cost_qty: 'quantité du prix', category: 'catégorie', unit: 'unité', recurrence: 'répétition', recur_until: 'répétition jusqu’au', date_from: 'du', date_to: 'au', user_id: 'personne', note: 'note', name: 'nom'
+    done: 'terminée', kind: 'type', kind: 'type', source: 'origine', stripe_session_id: 'paiement Stripe', member: 'membre', day: 'date', hours: 'heures', activity: 'activité', remaining_g: 'reste (g)', hourly_rate: 'tarif horaire (CHF/h)', file_name: 'fichier', labor_h: 'main-d’œuvre (h)', billing_invoice_number: 'facture', billed_at: 'facturée le', brand: 'marque', filament_type: 'matière', color_name: 'couleur', color_hex: 'teinte', diameter: 'diamètre (mm)', nozzle_min: 'buse min (°C)', nozzle_max: 'buse max (°C)', bed_c: 'plateau (°C)', dry_c: 'séchage (°C)', dry_h: 'séchage (h)', tare_g: 'poids à vide (g)', price_chf: 'prix payé', purchased_at: 'acheté le', supplier: 'fournisseur', location: 'emplacement', opened_at: 'ouverte le', dried_at: 'séchée le', dry_storage: 'stockée au sec', initial_g: 'poids neuf (g)', alert_g: 'seuil d’alerte (g)', label: 'nom', every_h: 'tous les (h)', last_done_at: 'dernier entretien', fail_reason: 'cause de l’échec', done_at: 'terminée le', priority: 'priorité', tags: 'étiquettes', client_id: 'fiche client', duration_h: 'durée (h)', phone: 'téléphone', email: 'e-mail', address: 'adresse', reason: 'raison', reorder_qty: 'quantité à commander', quantity: 'quantité en stock', min_quantity: 'seuil d’alerte', cost_chf: 'prix payé', cost_qty: 'quantité du prix', category: 'catégorie', unit: 'unité', recurrence: 'répétition', recur_until: 'répétition jusqu’au', date_from: 'du', date_to: 'au', user_id: 'personne', note: 'note', name: 'nom'
   };
   const VAL_FR = {
     todo: 'à faire', doing: 'en cours', done: 'terminé', planned: 'planifiée', printing: 'en impression',
@@ -2588,7 +2983,7 @@
         { k: 'tags', l: 'Étiquettes (séparées par des virgules)', t: 'text', hint: 'Exemples : laser, impression 3D, cadeau' },
         { k: 'notes', l: 'Notes', t: 'textarea' }
       ],
-      extraHtml: (rec) => (rec ? `<div class="files billing-box"><h4>Facturation</h4>
+      extraHtml: (rec) => (rec ? libLinkedHtml(rec) + `<div class="files billing-box"><h4>Facturation</h4>
         ${rec.billing_invoice_number ? `<div class="bb-line">Brouillon créé dans la facturation : <b>${esc(rec.billing_invoice_number)}</b>${rec.billed_at ? ` le ${esc(fmtDateTime(rec.billed_at))}` : ''}</div>` : '<small class="hint-line">Aucune facture créée pour cette commande.</small>'}
         <div><button type="button" class="btn btn-small" data-act="order-invoice" data-id="${rec.id}">${rec.billing_invoice_number ? 'Créer une autre facture…' : 'Créer un brouillon de facture…'}</button></div>
         <small class="hint-line">Enregistre d’abord les modifications de la commande : la facture reprend les données enregistrées.</small></div>` : '') + (rec && rec.source === 'boutique'
@@ -3697,6 +4092,7 @@
     add('Tâches', state.tasks.filter((t) => hit(t.title, t.notes)).map((t) => ({ kind: 'task', id: t.id, main: t.title, sub: t.start_at ? fmtDateTime(t.start_at) : 'Sans date' })));
     add('Matières', state.materials.filter((m) => hit(m.name, m.notes)).map((m) => ({ kind: 'material', id: m.id, main: m.name, sub: `${fmtNum(m.quantity)} ${unitFor(m, m.quantity)} en stock` })));
     add('Bobines', state.spools.filter((s) => { const m = materialById(s.material_id); return hit(filTitle(m), m && m.name, s.label, s.location, s.supplier, s.notes); }).map((s) => ({ kind: 'spool', act: 'spool-detail', id: s.id, main: `${filTitle(materialById(s.material_id))}${s.label ? ` #${s.label}` : ''}`, sub: `${fmtNum(Math.round(spoolLeft(s)))} g${s.machine_id ? `, dans ${machineName(s.machine_id)}` : s.location ? `, ${s.location}` : ''}` })));
+    add('Fichiers 3D', state.library_files.filter((f) => hit(f.title, f.file_name, (f.tags || []).join(' '), f.notes)).map((f) => ({ kind: 'library', act: 'lib-open', id: f.id, main: f.title, sub: `${(f.ext || '').toUpperCase()} ${fmtSize(f.size)}${f.tags && f.tags.length ? `, ${f.tags.join(', ')}` : ''}` })));
     add('Modèles', state.print_templates.filter((t) => hit(t.name, t.notes)).map((t) => ({ kind: 'template', id: t.id, main: t.name, sub: `${fmtNum(t.duration_h)} h` })));
     add('Commentaires', state.comments.filter((c) => hit(c.body)).map((c) => { const o = state.orders.find((x) => x.id === c.order_id); return o ? { kind: 'order', id: o.id, main: c.body.length > 80 ? `${c.body.slice(0, 80)}…` : c.body, sub: `${profileName(c.created_by)} sur ${orderLabel(o)}` } : null; }).filter(Boolean));
     add('Fichiers', state.attachments.filter((f) => hit(f.name)).map((f) => {
@@ -3843,6 +4239,9 @@
       case 'maint-done': markMaintenanceDone(el.dataset.id); break;
       case 'srange': state.statsRange = Number(el.dataset.r); render(); break;
       case 'tariffs': openTariffs(); break;
+      case 'lib-pick': pickLibraryFiles(); break;
+      case 'lib-open': openLibraryFile(el.dataset.id); break;
+      case 'lib-type': state.libType = el.dataset.t; render(); break;
       case 'order-invoice': openInvoiceDraft(el.dataset.id); break;
       case 'fil-tab': state.filTab = el.dataset.tab; render(); break;
       case 'fil-filter': state.filFilter = el.dataset.f; render(); break;
@@ -3930,6 +4329,11 @@
       const box = $('#help-results');
       if (box) box.innerHTML = helpResultsHtml(state.helpQuery);
     }
+    if (e.target && e.target.id === 'lib-search') {
+      state.libQuery = e.target.value;
+      const box = $('#lib-results');
+      if (box) { box.innerHTML = libResultsHtml(); }
+    }
     if (e.target && e.target.id === 'fil-search') {
       state.filQuery = e.target.value;
       const box = $('#fil-results');
@@ -3937,6 +4341,7 @@
     }
   });
   document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'lib-tag') { state.libTag = e.target.value; render(); return; }
     if (e.target && e.target.id === 'fil-type') { state.filType = e.target.value; render(); return; }
     if (e.target && e.target.id === 'tag-filter') { state.orderFilter.tag = e.target.value; render(); }
   });
@@ -4392,5 +4797,5 @@
     }
   })();
 
-  window.__dayan = { orderProfit, tariffs, openTariffs, openInvoiceDraft, labelData, openLabelDialog, scanPayload, qrSvg, handleScanLink, openScanned, needsDrying, filTitle, openWeigh, openSpoolDetail, billingExport, splitAddress, startTour, maybeOfferTour, openHelp, tourSteps: TOUR_STEPS, state, render, loadAll, computeReminders, checkReminders, prefs, purgeOldTrash, planJobs, handlePrinterStatus, liveOf, getPrinterCfg: () => printerCfg };
+  window.__dayan = { parseSTL, createStlViewer, uploadLibraryFiles, openLibraryFile, orderProfit, tariffs, openTariffs, openInvoiceDraft, labelData, openLabelDialog, scanPayload, qrSvg, handleScanLink, openScanned, needsDrying, filTitle, openWeigh, openSpoolDetail, billingExport, splitAddress, startTour, maybeOfferTour, openHelp, tourSteps: TOUR_STEPS, state, render, loadAll, computeReminders, checkReminders, prefs, purgeOldTrash, planJobs, handlePrinterStatus, liveOf, getPrinterCfg: () => printerCfg };
 })();

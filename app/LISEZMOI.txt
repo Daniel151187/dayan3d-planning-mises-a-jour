@@ -774,3 +774,49 @@ modifications en direct, quel que soit l'ordinateur.
    h. Publication : glisse le dossier "app" sur la page d'envoi GitHub
       (section 24) : l'installateur et la version web sont publies
       automatiquement.
+
+
+26) VERSION 2.11.0 : BIBLIOTHEQUE DE FICHIERS 3D PARTAGES
+   a. IMPORTANT : relance supabase-schema.sql en entier dans Supabase du
+      PLANNING (SQL Editor > New query > Run). Il ajoute la table
+      "library_files" (la fiche de chaque fichier). Il peut etre relance
+      sans danger. Les fichiers eux-memes vont dans l'espace prive
+      "pieces-jointes" deja utilise par les pieces jointes des commandes
+      (dossier "bibliotheque") : rien a creer dans Supabase.
+   b. Nouvel onglet "Fichiers 3D" (apres Filaments), partage par toute
+      l'equipe :
+      - AJOUTER : glisse des fichiers dans le cadre (ordinateur) ou
+        touche "+ Fichiers" (telephone, tablette). STL, 3MF, G-code, STEP,
+        OBJ, SCAD, ZIP, images... jusqu'a 50 Mo par fichier (limite de
+        l'offre gratuite de Supabase). Plusieurs fichiers a la fois. Un
+        fichier deja present (meme nom, meme taille) est ignore.
+      - POUR UN STL : l'appli lit le fichier et calcule les DIMENSIONS
+        (largeur x profondeur x hauteur en mm), le VOLUME (cm3) et le
+        nombre de triangles, et fabrique une VIGNETTE. Les dimensions
+        supposent un STL en millimetres (c'est le cas de presque tous).
+        Un STL illisible est quand meme conserve (sans dimensions).
+      - UN CLIC sur un fichier ouvre sa fiche : APERCU 3D (glisse pour
+        tourner, molette ou pincement pour zoomer), titre, ETIQUETTES,
+        NOTES (version, reglages), COMMANDE LIEE, Telecharger, Supprimer.
+      - Filtres par type (STL, 3MF, G-code, autres) et par etiquette ;
+        recherche par nom, etiquette ou note ; Ctrl+K retrouve aussi les
+        fichiers.
+      - Un fichier lie a une commande apparait dans la fiche de cette
+        commande ("Fichiers 3D de la bibliotheque").
+   c. APERCU 3D : il utilise la carte graphique du navigateur (WebGL),
+      presente sur les ordinateurs, telephones et tablettes actuels. Sur un
+      appareil qui ne le permet pas, un message l'indique : dimensions,
+      telechargement et le reste fonctionnent. Au-dela de 1 million de
+      triangles (fichier tres detaille), l'apercu est desactive pour ne pas
+      ralentir l'appareil.
+   d. SUPPRIMER est definitif et vaut pour toute l'equipe (le fichier est
+      enleve du stockage). L'appli demande confirmation.
+   e. LES PIECES JOINTES DES COMMANDES restent comme avant (fichiers lies a
+      UNE commande). La bibliotheque sert aux fichiers a retrouver et a
+      partager independamment d'une commande.
+   f. Stockage : l'offre gratuite de Supabase offre 1 Go au total (photos,
+      pieces jointes et bibliotheque). La page affiche l'espace utilise
+      par la bibliotheque.
+   g. Publication : glisse le dossier "app" sur la page d'envoi GitHub
+      (section 24) : l'installateur et la version web sont publies
+      automatiquement.
